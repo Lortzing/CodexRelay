@@ -1,0 +1,13 @@
+[Unit]
+Description=CodexRelay automatic profile failover
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/codex-relay auto official backup --watch --interval 60 --fail-threshold 2 --recover-threshold 2 --cooldown 300
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
