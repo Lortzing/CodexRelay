@@ -1,24 +1,24 @@
 # CodexRelay
 
-CodexRelay manages multiple authentication and API profiles for the OpenAI Codex CLI. It supports:
+CodexRelay is a profile manager and automatic failover tool for the OpenAI Codex CLI. It supports:
 
-- ChatGPT/Codex accounts imported from `auth.json`.
-- OpenAI-compatible APIs configured with an API key, base URL, and model.
-- Manual switching and priority-based automatic failover/recovery.
-- ChatGPT usage windows, credits, API health, latency, and optional provider balance display.
-- Atomic activation, backups, process locking, automatic first-run import, and JSON output.
+- ChatGPT/Codex login profiles imported from `auth.json`.
+- OpenAI-compatible API profiles configured with an API key, base URL, and model.
+- Manual switching, health checks, automatic failover, and recovery.
+- ChatGPT plan, rate-limit window, and credit display.
+- Optional provider-specific API balance endpoints.
+- Human-readable status tables and JSON output.
 
-Profiles are stored independently and activated by replacing the active Codex `auth.json` and `config.toml` with validated, atomic writes.
+Profiles are stored independently and activated by atomically replacing the active Codex `auth.json` and `config.toml`.
 
 ## Requirements
 
 - Python 3.11 or newer.
-- `uv` for the recommended installation path.
+- `uv` for the recommended installation and lifecycle commands.
 - Codex CLI available as `codex` for actual Codex use.
+- Network access for health and usage checks.
 
 ## Installation
-
-Clone the repository and run:
 
 ```bash
 git clone https://github.com/Lortzing/CodexRelay.git
@@ -26,196 +26,169 @@ cd CodexRelay
 ./install.sh
 ```
 
-The installer:
-
-1. Removes the legacy `codex-switchboard` uv tool when present, without deleting its data.
-2. Installs CodexRelay with `uv tool install`.
-3. Installs shell completion silently for Zsh, Bash, or Fish.
-4. Migrates legacy `~/.config/codex-switchboard` data when needed.
-5. Imports the active `$CODEX_HOME/auth.json` and `config.toml` when no managed profile exists.
-
-The public commands are:
+The installer registers both commands:
 
 ```bash
-cr --help
+cxr --help
 codex-relay --help
 ```
 
-`cr` is the recommended short command. A deprecated `csw` entry point remains temporarily for compatibility, but it is not shown in documentation or completion.
+`cxr` is the recommended short command. Shell completion is installed silently; completion-management flags are not exposed. When the profile library is empty, installation or the first business command automatically imports the active `$CODEX_HOME/auth.json` and `config.toml`.
 
 Direct installation is also supported:
 
 ```bash
-uv tool install git+https://github.com/Lortzing/CodexRelay.git
-cr status --no-probe
-```
-
-## Upgrade from CodexSwitchboard
-
-The old distribution and commands were:
-
-```text
-codex-switchboard
-codex-switch
-csw
-```
-
-Recommended upgrade:
-
-```bash
-git clone https://github.com/Lortzing/CodexRelay.git
-cd CodexRelay
-./install.sh
-```
-
-Manual uv-tool upgrade:
-
-```bash
-uv tool uninstall codex-switchboard
 uv tool install --force git+https://github.com/Lortzing/CodexRelay.git
-cr status --no-probe
+cxr status --no-probe
 ```
-
-For an old pip installation:
-
-```bash
-python -m pip uninstall codex-switchboard
-python -m pip install --upgrade git+https://github.com/Lortzing/CodexRelay.git
-```
-
-On first use, CodexRelay migrates the old default data directory:
-
-```text
-~/.config/codex-switchboard  ->  ~/.config/codex-relay
-```
-
-This migration preserves profiles, backups, and state. It does not modify or delete the active files under `~/.codex`.
 
 ## Storage
-
-Default application data:
 
 ```text
 ~/.config/codex-relay/
 ├── profiles/
 │   └── <name>/
-│       ├── profile.json
-│       ├── auth.json
-│       └── config.toml
+│       ├── profile.json   # Non-secret metadata
+│       ├── auth.json      # Credentials; mode 0600
+│       └── config.toml    # Complete Codex config for this profile
 ├── backups/
 ├── state.json
 └── switch.lock
 ```
 
-Active Codex files:
+Active Codex files are written to:
 
 ```text
 ~/.codex/auth.json
 ~/.codex/config.toml
 ```
 
-Override locations with `CODEX_RELAY_HOME`, `CODEX_HOME`, `--home`, or `--codex-home`.
+Override locations with `CODEX_RELAY_HOME`, `CODEX_HOME`, or the global `--home` and `--codex-home` options.
 
 ## Automatic first-run import
 
-When the profile library is empty, the installer or the first business command imports the current Codex configuration automatically:
-
-```bash
-cr status --no-probe
-```
+When no managed profile exists, CodexRelay imports the active Codex configuration automatically. The importer detects ChatGPT-token or API-key login, preserves both files exactly, and extracts non-secret metadata such as email, plan, model, provider id, and base URL.
 
 Explicit import remains available:
 
 ```bash
-cr import-current
-cr import-current official
+cxr import-current
+cxr import-current official
 ```
 
-The importer detects ChatGPT token login or API-key login and extracts non-secret metadata such as email, plan, model, provider id, and base URL. Tokens and keys are never printed.
+Optional API probe and balance overrides:
+
+```bash
+cxr import-current gateway \
+  --health-mode responses \
+  --balance-url https://gateway.example.com/account/credits \
+  --balance-path data.balance
+```
 
 ## Add profiles
 
 Import a ChatGPT `auth.json`:
 
 ```bash
-cr add-auth official ~/.codex/auth.json
+cxr add-auth official ~/.codex/auth.json
 ```
 
-Add an API profile:
+Optionally use a specific base configuration and model:
 
 ```bash
-cr add-api backup \
+cxr add-auth official ./auth.json \
+  --config ~/.codex/config.toml \
+  --model gpt-5.6
+```
+
+Add an API key, URL, and model:
+
+```bash
+cxr add-api backup \
+  --url https://gateway.example.com/v1 \
+  --model gpt-5.6 \
+  --api-key 'sk-...'
+```
+
+Avoid shell history by reading the key from standard input:
+
+```bash
+printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
   --url https://gateway.example.com/v1 \
   --model gpt-5.6 \
   --api-key-stdin
 ```
 
-Without `--api-key` or `--api-key-stdin`, the CLI prompts for the key with hidden input.
+Without either API-key option, CodexRelay prompts for the key with hidden input.
 
-API health modes:
+### API health modes
+
+Responses probe, which may consume a small number of tokens:
 
 ```bash
-# Minimal Responses API request; may consume a small number of tokens.
-cr add-api backup --url https://gateway.example.com/v1 --model gpt-5.6 \
-  --health-mode responses --api-key-stdin
-
-# GET /models; usually cheaper.
-cr add-api backup --url https://gateway.example.com/v1 --model gpt-5.6 \
-  --health-mode models --api-key-stdin
-
-# Provider-specific endpoint.
-cr add-api backup --url https://gateway.example.com/v1 --model gpt-5.6 \
-  --health-mode custom \
-  --health-endpoint https://gateway.example.com/health \
-  --expected-text ok \
-  --api-key-stdin
+cxr add-api backup \
+  --url https://gateway.example.com/v1 \
+  --model gpt-5.6 \
+  --health-mode responses
 ```
 
-Optional provider balance endpoint:
+Models-list probe:
 
 ```bash
-cr add-api backup \
+cxr add-api backup \
+  --url https://gateway.example.com/v1 \
+  --model gpt-5.6 \
+  --health-mode models
+```
+
+Custom probe:
+
+```bash
+cxr add-api backup \
+  --url https://gateway.example.com/v1 \
+  --model gpt-5.6 \
+  --health-mode custom \
+  --health-endpoint https://gateway.example.com/health \
+  --expected-text ok
+```
+
+Optional provider-specific balance endpoint:
+
+```bash
+cxr add-api backup \
   --url https://gateway.example.com/v1 \
   --model gpt-5.6 \
   --balance-url https://gateway.example.com/account/credits \
-  --balance-path data.balance \
-  --api-key-stdin
+  --balance-path data.balance
 ```
 
 ## Status and manual switching
 
-`status` combines profile listing, current-state inspection, health checks, usage, and balance display:
-
 ```bash
-cr status
-cr status --no-probe
-cr status --watch --interval 30
-cr status --json
+cxr status --no-probe
+cxr status
+cxr status --watch --interval 30
+cxr status --json
+cxr use official
+cxr use backup
 ```
 
-Activate a profile:
+The status table combines profile metadata, active state, health, latency, ChatGPT usage, optional API balance, and diagnostics.
 
-```bash
-cr use official
-cr use backup
-```
-
-Restart existing Codex CLI/App processes after switching because they may cache authentication. New processes read the activated files.
-
-The former `list` command remains a hidden compatibility alias for `status --no-probe`.
+Before a switch, current active files are backed up. Replacement uses a process lock and atomic writes; validation failure restores the previous active files. Existing Codex processes may cache authentication, so restart them after a manual switch.
 
 ## Automatic switching
 
 One evaluation in priority order:
 
 ```bash
-cr auto official backup
+cxr auto official backup
 ```
 
 Continuous monitoring:
 
 ```bash
-cr auto official backup \
+cxr auto official backup \
   --watch \
   --interval 60 \
   --fail-threshold 2 \
@@ -225,64 +198,56 @@ cr auto official backup \
 
 Policy:
 
-1. Earlier profile names have higher priority.
-2. The active profile fails over after the configured number of consecutive failures.
-3. A higher-priority profile is restored after consecutive successful checks.
-4. Recovery respects the cooldown to reduce flapping.
-5. Emergency failover is not blocked by cooldown.
-6. If every profile is unhealthy, active files remain unchanged.
+1. Earlier profiles have higher priority.
+2. The active profile fails over after the configured consecutive-failure threshold.
+3. A higher-priority profile is restored after the consecutive-recovery threshold.
+4. Recovery respects cooldown; emergency failover does not.
+5. If every candidate is unhealthy, active files remain unchanged.
 
-## Launch Codex with automatic selection
-
-`launch` checks profiles, activates the first healthy one, and then starts a fresh Codex process:
+Select a healthy profile and launch a fresh Codex process:
 
 ```bash
-cr launch -p official -p backup -- exec "say hello"
+cxr launch -p official -p backup -- exec "say hello"
 ```
 
 Everything after `--` is passed to `codex`.
 
-## Uninstallation
+## Update
 
-Uninstall the program and shell completion while preserving profiles and backups:
+Update from the GitHub `main` branch while preserving profiles and active Codex files:
 
 ```bash
-cr uninstall
+cxr update
 ```
 
 Skip confirmation:
 
 ```bash
-cr uninstall --yes
+cxr update --yes
 ```
 
-Also remove all CodexRelay-managed profiles, backups, state, and metadata:
+## Uninstall
+
+Interactive uninstall asks whether profiles, backups, and state should be preserved:
 
 ```bash
-cr uninstall --purge
+cxr uninstall
 ```
 
-Also attempt to remove an installed legacy `codex-switchboard` package:
+Non-interactive uninstall preserves managed data by default:
 
 ```bash
-cr uninstall --legacy
+cxr uninstall --yes
 ```
 
-Uninstallation never removes the active `~/.codex/auth.json` or `~/.codex/config.toml`.
-
-Old versions without the `uninstall` command can be removed manually:
+Permanently delete all CodexRelay-managed data:
 
 ```bash
-uv tool uninstall codex-switchboard
-# or, for a pip installation:
-python -m pip uninstall codex-switchboard
+cxr uninstall --purge
+cxr uninstall --purge --yes
 ```
 
-To delete old data as well:
-
-```bash
-rm -rf ~/.config/codex-switchboard
-```
+Uninstall removes shell-completion artifacts but never removes active `~/.codex/auth.json` or `~/.codex/config.toml`.
 
 ## Background monitoring
 
@@ -298,7 +263,7 @@ journalctl --user -u codex-relay.service -f
 
 ### macOS launchd
 
-Edit the executable path in `examples/com.codex-relay.auto.plist`, then:
+Edit the absolute executable path in `examples/com.codex-relay.auto.plist`, then run:
 
 ```bash
 mkdir -p ~/Library/LaunchAgents
@@ -306,20 +271,33 @@ cp examples/com.codex-relay.auto.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.codex-relay.auto.plist
 ```
 
-## Security notes
+## ChatGPT usage query
 
+For ChatGPT profiles, CodexRelay reads the access token and account id from `auth.json`, then queries:
+
+```text
+GET https://chatgpt.com/backend-api/wham/usage
+Authorization: Bearer <access token>
+ChatGPT-Account-Id: <account id>
+```
+
+This is an unstable implementation endpoint, not a guaranteed public API. Use `cxr status --no-probe` to avoid network access.
+
+## Security
+
+- Profile directories use restrictive permissions where supported.
 - Credential and state files use mode `0600` where supported.
-- Profile and backup directories use restrictive permissions.
-- API keys and access tokens are omitted from status and JSON output.
-- Prefer `--api-key-stdin` because direct command-line arguments may remain in shell history.
-- ChatGPT usage checks send the access token only to the configured OpenAI ChatGPT endpoint.
-- Custom health and balance endpoints receive the API key as a Bearer token; use trusted HTTPS endpoints.
+- API keys and access tokens are not printed in status tables or JSON output.
+- Prefer `--api-key-stdin` over a direct argument to avoid shell history.
+- Custom health and balance endpoints receive the configured API key as a Bearer token.
 - Backups contain credentials and must be protected.
 
 ## Diagnostics and development
 
 ```bash
-cr doctor
+cxr doctor
+cxr doctor --json
+
 uv sync --extra dev
 uv run pytest
 uv build

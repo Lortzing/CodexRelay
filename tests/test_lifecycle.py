@@ -2,21 +2,6 @@ from pathlib import Path
 
 from codex_relay import lifecycle
 from codex_relay.lifecycle import cleanup_relay
-from codex_relay.storage import migrate_legacy_app_home
-
-
-def test_migrate_legacy_app_home(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    legacy = home / ".config" / "codex-switchboard"
-    target = home / ".config" / "codex-relay"
-    (legacy / "profiles" / "official").mkdir(parents=True)
-    (legacy / "state.json").write_text("{}\n")
-
-    migrated = migrate_legacy_app_home(target)
-
-    assert migrated == legacy
-    assert (target / "state.json").is_file()
-    assert not legacy.exists()
 
 
 def test_cleanup_preserves_data_by_default(tmp_path: Path, monkeypatch) -> None:
@@ -40,3 +25,19 @@ def test_cleanup_purge_removes_data(tmp_path: Path, monkeypatch) -> None:
 
     assert not app_home.exists()
     assert result.data_removed
+
+
+def test_update_prefers_uv_tool(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str]):
+        commands.append(command)
+        return lifecycle.subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(lifecycle, "_run", fake_run)
+
+    manager = lifecycle._update_distribution("git+https://example.invalid/repo.git")
+
+    assert manager == "uv tool"
+    assert commands == [["/usr/bin/uv", "tool", "install", "--force", "git+https://example.invalid/repo.git"]]

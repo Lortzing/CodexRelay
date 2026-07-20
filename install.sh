@@ -8,17 +8,14 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-# The pre-rename distribution used a different uv-tool package name and may
-# export conflicting executables. Removing it does not delete profile data.
-uv tool uninstall codex-switchboard >/dev/null 2>&1 || true
 uv tool install --force "$ROOT_DIR"
 
 BIN_DIR="$(uv tool dir --bin)"
-if [[ -x "$BIN_DIR/cr" ]]; then
-  # Configure completion, migrate legacy data, and bootstrap the active Codex
-  # configuration. Missing/invalid active files must not fail installation.
-  "$BIN_DIR/cr" --help >/dev/null
-  "$BIN_DIR/cr" status --no-probe --json >/dev/null 2>&1 || true
+if [[ -x "$BIN_DIR/cxr" ]]; then
+  # Configure completion and bootstrap the active Codex configuration.
+  # Missing or invalid active files must not fail installation.
+  "$BIN_DIR/cxr" --help >/dev/null
+  "$BIN_DIR/cxr" status --no-probe --json >/dev/null 2>&1 || true
 fi
 
-printf 'Installed CodexRelay. Use: cr status\n'
+printf 'Installed CodexRelay. Use: cxr status\n'

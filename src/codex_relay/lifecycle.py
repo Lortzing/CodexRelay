@@ -12,7 +12,7 @@ from .completion import uninstall_completion
 from .errors import RelayError
 
 CURRENT_DISTRIBUTION = "codex-relay"
-LEGACY_DISTRIBUTION = "codex-switchboard"
+DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CodexRelay.git"
 
 
 @dataclass(slots=True)
@@ -50,13 +50,37 @@ def _uninstall_distribution(package: str) -> str:
     )
 
 
+def _update_distribution(source: str) -> str:
+    uv = shutil.which("uv")
+    if uv:
+        result = _run([uv, "tool", "install", "--force", source])
+        if result.returncode == 0:
+            return "uv tool"
+        uv_error = (result.stderr or result.stdout).strip()
+    else:
+        uv_error = ""
+
+    pipx = shutil.which("pipx")
+    if pipx:
+        result = _run([pipx, "install", "--force", source])
+        if result.returncode == 0:
+            return "pipx"
+
+    result = _run([sys.executable, "-m", "pip", "install", "--upgrade", source])
+    if result.returncode == 0:
+        return "pip"
+
+    detail = (result.stderr or result.stdout).strip() or uv_error
+    raise RelayError(detail or "Could not update CodexRelay with uv, pipx, or pip.")
+
+
 def cleanup_relay(
     *,
     app_home: Path,
     purge: bool,
     user_home: Path | None = None,
 ) -> CleanupResult:
-    """Remove completion artifacts and optionally managed data before package removal."""
+    """Remove completion artifacts and optionally all managed data before package removal."""
     removed = uninstall_completion(app_home=app_home, home=user_home)
     data_removed = False
     if purge and app_home.exists():
@@ -68,21 +92,22 @@ def cleanup_relay(
     )
 
 
-def uninstall_and_exit(*, include_legacy_package: bool = False) -> NoReturn:
-    """Uninstall packages and terminate without returning into removed dependencies.
-
-    A uv tool uninstall removes this process's virtual environment. Returning to
-    Typer/Rich after that can trigger lazy imports from files that no longer
-    exist, so the command exits through ``os._exit`` immediately afterward.
-    """
+def uninstall_and_exit() -> NoReturn:
+    """Uninstall the package and terminate without returning into removed dependencies."""
     try:
-        if include_legacy_package:
-            try:
-                _uninstall_distribution(LEGACY_DISTRIBUTION)
-            except RelayError:
-                pass
         manager = _uninstall_distribution(CURRENT_DISTRIBUTION)
         os.write(1, f"Uninstalled {CURRENT_DISTRIBUTION} using {manager}.\n".encode())
+        os._exit(0)
+    except RelayError as exc:
+        os.write(2, f"Error: {exc}\n".encode())
+        os._exit(1)
+
+
+def update_and_exit(*, source: str = DEFAULT_UPDATE_SOURCE) -> NoReturn:
+    """Replace the installed package and exit before importing replaced dependencies again."""
+    try:
+        manager = _update_distribution(source)
+        os.write(1, f"Updated {CURRENT_DISTRIBUTION} using {manager}.\n".encode())
         os._exit(0)
     except RelayError as exc:
         os.write(2, f"Error: {exc}\n".encode())

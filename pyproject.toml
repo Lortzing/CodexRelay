@@ -1,6 +1,6 @@
 [project]
 name = "codex-relay"
-version = "0.5.0"
+version = "0.6.0"
 description = "Manage Codex authentication and OpenAI-compatible API profiles with health checks and automatic failover."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,10 +23,8 @@ Issues = "https://github.com/Lortzing/CodexRelay/issues"
 dev = ["pytest>=8"]
 
 [project.scripts]
-codex-relay = "codex_relay.cli:main"
-cr = "codex_relay.cli:main"
-# Deprecated compatibility alias for users upgrading from CodexSwitchboard.
-csw = "codex_relay.cli:main"
+codex-relay = "codex_relay.entrypoint:main"
+cxr = "codex_relay.entrypoint:main"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]

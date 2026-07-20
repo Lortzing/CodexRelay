@@ -1,9 +1,13 @@
 import json
+import tomllib
 from pathlib import Path
 
+import typer
 from typer.testing import CliRunner
 
-from codex_relay.cli import app
+from codex_relay import entrypoint as cli
+from codex_relay.entrypoint import app
+from codex_relay.lifecycle import CleanupResult
 
 runner = CliRunner()
 
@@ -39,16 +43,70 @@ def test_status_first_run_imports_current_profile(tmp_path: Path, chatgpt_auth: 
     assert [item["name"] for item in second_payload["profiles"]] == ["test"]
 
 
-def test_list_is_hidden_but_remains_compatible(tmp_path: Path) -> None:
-    help_result = runner.invoke(app, ["--help"])
-    assert help_result.exit_code == 0
-    assert "list" not in help_result.stdout
+def test_only_current_entry_points_are_published() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["scripts"] == {
+        "codex-relay": "codex_relay.entrypoint:main",
+        "cxr": "codex_relay.entrypoint:main",
+    }
+
+
+def test_list_command_is_removed() -> None:
+    result = runner.invoke(app, ["list"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+
+
+def _patch_uninstall(monkeypatch, captured: dict[str, object]) -> None:
+    def fake_cleanup(*, app_home: Path, purge: bool, user_home=None):
+        captured["purge"] = purge
+        return CleanupResult(completion_files_removed=0, data_removed=purge)
+
+    def fake_exit() -> None:
+        raise typer.Exit(0)
+
+    monkeypatch.setattr(cli, "cleanup_relay", fake_cleanup)
+    monkeypatch.setattr(cli, "uninstall_and_exit", fake_exit)
+
+
+def test_uninstall_interactively_preserves_profiles(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    _patch_uninstall(monkeypatch, captured)
 
     result = runner.invoke(
         app,
-        ["--home", str(tmp_path / "app"), "--codex-home", str(tmp_path / "codex"), "list", "--json"],
+        ["--home", str(tmp_path / "app"), "uninstall"],
+        input="y\n",
     )
+
     assert result.exit_code == 0, result.stdout
-    payload = json.loads(result.stdout)
-    assert payload["profiles"] == []
-    assert payload["results"] == []
+    assert captured["purge"] is False
+    assert "preserved" in result.stdout
+
+
+def test_uninstall_interactively_can_delete_profiles(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    _patch_uninstall(monkeypatch, captured)
+
+    result = runner.invoke(
+        app,
+        ["--home", str(tmp_path / "app"), "uninstall"],
+        input="n\ny\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["purge"] is True
+    assert "deleted" in result.stdout
+
+
+def test_uninstall_purge_yes_is_noninteractive(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    _patch_uninstall(monkeypatch, captured)
+
+    result = runner.invoke(
+        app,
+        ["--home", str(tmp_path / "app"), "uninstall", "--purge", "--yes"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["purge"] is True

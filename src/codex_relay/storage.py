@@ -34,42 +34,10 @@ def default_app_home() -> Path:
     return Path.home() / ".config" / "codex-relay"
 
 
-def legacy_app_homes() -> list[Path]:
-    """Return legacy CodexSwitchboard data locations in priority order."""
-    homes: list[Path] = []
-    override = os.environ.get("CODEX_SWITCHBOARD_HOME")
-    if override:
-        homes.append(Path(override).expanduser())
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    if xdg:
-        homes.append(Path(xdg).expanduser() / "codex-switchboard")
-    homes.append(Path.home() / ".config" / "codex-switchboard")
-    unique: list[Path] = []
-    for item in homes:
-        if item not in unique:
-            unique.append(item)
-    return unique
 
-
-def migrate_legacy_app_home(target: Path) -> Path | None:
-    """Move legacy profile data into CodexRelay when the new home is absent."""
-    target = target.expanduser()
-    if target.exists():
-        return None
-    candidates = [target.parent / "codex-switchboard", *legacy_app_homes()]
-    seen: list[Path] = []
-    for source in candidates:
-        if source in seen:
-            continue
-        seen.append(source)
-        if not source.exists() or source.resolve() == target.resolve():
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            source.replace(target)
-        except OSError:
-            shutil.copytree(source, target)
-        return source
+def migrate_legacy_app_home(target: Path) -> None:
+    """Compatibility hook intentionally disabled; historical data is not migrated."""
+    del target
     return None
 
 

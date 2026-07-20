@@ -14,14 +14,11 @@ from .storage import default_app_home
 if TYPE_CHECKING:
     import typer
 
-_COMPLETION_SCHEMA_VERSION = 2
+_COMPLETION_SCHEMA_VERSION = 3
 _BLOCK_BEGIN = "# >>> codex-relay completion >>>"
 _BLOCK_END = "# <<< codex-relay completion <<<"
-_LEGACY_BLOCK_BEGIN = "# >>> codex-switchboard completion >>>"
-_LEGACY_BLOCK_END = "# <<< codex-switchboard completion <<<"
 _SUPPORTED_SHELLS = {"bash", "zsh", "fish"}
-_PROGRAMS = ("cr", "codex-relay")
-_LEGACY_PROGRAMS = ("csw", "codex-switch")
+_PROGRAMS = ("cxr", "codex-relay")
 
 
 def _completion_var(program: str) -> str:
@@ -72,7 +69,6 @@ def _remove_block(text: str, begin: str, end: str) -> str:
 
 def _upsert_managed_block(path: Path, block: str) -> None:
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    existing = _remove_block(existing, _LEGACY_BLOCK_BEGIN, _LEGACY_BLOCK_END)
     existing = _remove_block(existing, _BLOCK_BEGIN, _BLOCK_END)
     separator = "" if not existing else ("" if existing.endswith("\n\n") else "\n")
     updated = existing + separator + block + "\n"
@@ -100,8 +96,6 @@ def _install_fish(app: "typer.Typer", home: Path) -> list[Path]:
     completion_dir = home / ".config" / "fish" / "completions"
     completion_dir.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
-    for legacy in _LEGACY_PROGRAMS:
-        (completion_dir / f"{legacy}.fish").unlink(missing_ok=True)
     for program in _PROGRAMS:
         path = completion_dir / f"{program}.fish"
         path.write_text(_completion_source(app, "fish", program), encoding="utf-8")
@@ -153,7 +147,7 @@ def install_completion(
 
 
 def uninstall_completion(*, app_home: Path | None = None, home: Path | None = None) -> list[Path]:
-    """Remove CodexRelay and legacy CodexSwitchboard completion artifacts."""
+    """Remove CodexRelay completion artifacts."""
     resolved_home = (home or Path.home()).expanduser()
     resolved_app_home = (app_home or default_app_home()).expanduser()
     changed: list[Path] = []
@@ -163,13 +157,12 @@ def uninstall_completion(*, app_home: Path | None = None, home: Path | None = No
             continue
         original = rc_file.read_text(encoding="utf-8")
         updated = _remove_block(original, _BLOCK_BEGIN, _BLOCK_END)
-        updated = _remove_block(updated, _LEGACY_BLOCK_BEGIN, _LEGACY_BLOCK_END)
         if updated != original:
             rc_file.write_text(updated, encoding="utf-8")
             changed.append(rc_file)
 
     fish_dir = resolved_home / ".config" / "fish" / "completions"
-    for program in (*_PROGRAMS, *_LEGACY_PROGRAMS):
+    for program in _PROGRAMS:
         path = fish_dir / f"{program}.fish"
         if path.exists():
             path.unlink()
@@ -179,8 +172,6 @@ def uninstall_completion(*, app_home: Path | None = None, home: Path | None = No
         resolved_app_home / "completion.json",
         resolved_app_home / "completions" / "codex-relay.zsh",
         resolved_app_home / "completions" / "codex-relay.bash",
-        resolved_app_home / "completions" / "codex-switchboard.zsh",
-        resolved_app_home / "completions" / "codex-switchboard.bash",
     ):
         if candidate.exists():
             candidate.unlink()
@@ -192,10 +183,7 @@ def uninstall_completion(*, app_home: Path | None = None, home: Path | None = No
 
 
 def _completion_request_in_progress() -> bool:
-    return any(
-        os.environ.get(_completion_var(program))
-        for program in (*_PROGRAMS, *_LEGACY_PROGRAMS)
-    )
+    return any(os.environ.get(_completion_var(program)) for program in _PROGRAMS)
 
 
 def ensure_completion(app: "typer.Typer") -> None:

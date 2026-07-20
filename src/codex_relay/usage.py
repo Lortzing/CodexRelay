@@ -11,7 +11,7 @@ import httpx
 from .errors import InvalidProfileError
 
 CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-USER_AGENT = "codex-relay/0.5.0"
+USER_AGENT = "codex-relay/0.6.0"
 
 
 def _decode_jwt_payload(token: str) -> dict[str, Any]:
