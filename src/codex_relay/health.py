@@ -11,7 +11,7 @@ import httpx
 from .models import ProbeResult, Profile
 from .usage import fetch_chatgpt_usage, parse_auth_json
 
-USER_AGENT = "codex-relay/0.2.0"
+USER_AGENT = "codex-relay/0.5.0"
 
 
 def _redact(text: str, secret: str) -> str:
@@ -112,8 +112,9 @@ def probe_profile(
                         "stream": False,
                     },
                 )
+                body: Any
                 try:
-                    body: Any = response.json()
+                    body = response.json()
                 except json.JSONDecodeError:
                     body = None
                 text = _extract_output_text(body)
