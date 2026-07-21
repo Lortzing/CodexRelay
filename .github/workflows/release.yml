@@ -4,37 +4,73 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish, for example v0.6.0
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref_name }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  PYINSTALLER_VERSION: "6.21.0"
+
 jobs:
   validate:
     name: Validate release version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
+      tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Read and verify version
         id: version
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
+          tag="$REQUESTED_TAG"
+          version="${tag#v}"
           project_version="$(python - <<'PY'
           import tomllib
           from pathlib import Path
-          print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])
+          print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
           PY
           )"
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [[ "$tag_version" != "$project_version" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match project version $project_version" >&2
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with v: $tag" >&2
             exit 1
           fi
-          echo "version=$project_version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" != "$project_version" ]]; then
+            echo "Tag $tag does not match project version $project_version" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Run tests
+        run: |
+          uv sync --extra dev
+          uv run pytest
 
   build-binaries:
     name: Build ${{ matrix.target }}
@@ -44,45 +80,112 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: windows-x86_64
-            runner: windows-latest
+          - target: windows-x86
+            runner: windows-2022
+            python-arch: x86
+            expected-bits: 32
+            expected-machine: ""
             binary: dist/cxr.exe
+          - target: windows-x86_64
+            runner: windows-2022
+            python-arch: x64
+            expected-bits: 64
             expected-machine: AMD64
+            binary: dist/cxr.exe
+          - target: windows-arm64
+            runner: windows-11-arm
+            python-arch: arm64
+            expected-bits: 64
+            expected-machine: ARM64
+            binary: dist/cxr.exe
           - target: macos-x86_64
             runner: macos-15-intel
-            binary: dist/cxr
+            python-arch: x64
+            expected-bits: 64
             expected-machine: x86_64
+            binary: dist/cxr
           - target: macos-arm64
             runner: macos-15
-            binary: dist/cxr
+            python-arch: arm64
+            expected-bits: 64
             expected-machine: arm64
-          - target: linux-x86_64
-            runner: ubuntu-latest
             binary: dist/cxr
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+            python-arch: x64
+            expected-bits: 64
             expected-machine: x86_64
+            binary: dist/cxr
+          - target: linux-aarch64
+            runner: ubuntu-24.04-arm
+            python-arch: arm64
+            expected-bits: 64
+            expected-machine: aarch64
+            binary: dist/cxr
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
 
-      - name: Install uv and Python
+      - name: Set up native Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
+
+      - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: pyproject.toml
 
-      - name: Verify runner architecture
-        run: python -c "import platform; actual=platform.machine(); expected='${{ matrix.expected-machine }}'; print(f'runner architecture: {actual}'); assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'"
+      - name: Verify build architecture
+        shell: bash
+        env:
+          EXPECTED_BITS: ${{ matrix.expected-bits }}
+          EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+        run: |
+          python - <<'PY'
+          import os
+          import platform
+          import struct
 
-      - name: Install project
-        run: uv sync --extra dev
+          bits = struct.calcsize("P") * 8
+          machine = platform.machine()
+          expected_bits = int(os.environ["EXPECTED_BITS"])
+          expected_machine = os.environ.get("EXPECTED_MACHINE", "")
+          print(f"Python architecture: {bits}-bit; runner machine: {machine}")
+          assert bits == expected_bits, f"expected {expected_bits}-bit Python, got {bits}-bit"
+          if expected_machine:
+              assert machine.lower() == expected_machine.lower(), (
+                  f"expected machine {expected_machine}, got {machine}"
+              )
+          PY
 
-      - name: Run tests
-        run: uv run pytest
+      - name: Install project and PyInstaller
+        shell: bash
+        run: |
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
+          uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
 
       - name: Build standalone executable
-        run: uv run --with pyinstaller==6.21.0 pyinstaller --clean --noconfirm --onefile --name cxr scripts/cxr_launcher.py
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python_exe=".release-venv/Scripts/python.exe"
+          else
+            python_exe=".release-venv/bin/python"
+          fi
+          "$python_exe" -m PyInstaller \
+            --clean \
+            --noconfirm \
+            --onefile \
+            --console \
+            --noupx \
+            --name cxr \
+            scripts/cxr_launcher.py
 
       - name: Smoke test executable
         run: python -c "import subprocess; subprocess.run([r'${{ matrix.binary }}', '--help'], check=True)"
@@ -103,7 +206,7 @@ jobs:
     needs:
       - validate
       - build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
@@ -118,27 +221,28 @@ jobs:
         run: |
           mkdir -p release-assets
           mapfile -t files < <(find downloaded-assets -type f \( -name 'codex-relay-*.zip' -o -name 'codex-relay-*.tar.gz' \) -print | sort)
-          if [[ "${#files[@]}" -ne 4 ]]; then
-            printf 'Expected 4 platform archives, found %s\n' "${#files[@]}" >&2
+          if [[ "${#files[@]}" -ne 7 ]]; then
+            printf 'Expected 7 platform archives, found %s\n' "${#files[@]}" >&2
             printf '%s\n' "${files[@]}" >&2
             exit 1
           fi
           for file in "${files[@]}"; do
             cp "$file" release-assets/
           done
-          (cd release-assets && sha256sum codex-relay-* > SHA256SUMS)
+          (cd release-assets && sha256sum codex-relay-* > SHA256SUMS.txt)
           ls -lh release-assets
 
       - name: Create or update GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* \
+            gh release create "$RELEASE_TAG" release-assets/* \
               --verify-tag \
               --generate-notes \
-              --title "CodexRelay $GITHUB_REF_NAME"
+              --title "CodexRelay $RELEASE_TAG"
           fi

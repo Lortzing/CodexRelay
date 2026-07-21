@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
@@ -13,6 +14,52 @@ from .errors import RelayError
 
 CURRENT_DISTRIBUTION = "codex-relay"
 DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CodexRelay.git"
+RELEASES_URL = "https://github.com/Lortzing/CodexRelay/releases/latest"
+
+
+def is_frozen_executable() -> bool:
+    """Return whether CodexRelay is running from a standalone frozen executable."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def _remove_frozen_executable_and_exit() -> NoReturn:
+    executable = Path(sys.executable).resolve()
+    if os.name != "nt":
+        try:
+            executable.unlink()
+            os.write(1, f"Removed standalone executable: {executable}\n".encode())
+            os._exit(0)
+        except OSError as exc:
+            os.write(2, f"Error: could not remove {executable}: {exc}\n".encode())
+            os._exit(1)
+
+    script = Path(tempfile.gettempdir()) / f"codex-relay-uninstall-{os.getpid()}.cmd"
+    script.write_text(
+        "@echo off\r\n"
+        ":retry\r\n"
+        f'del /f /q "{executable}" >nul 2>&1\r\n'
+        f'if exist "{executable}" (\r\n'
+        "  ping 127.0.0.1 -n 2 >nul\r\n"
+        "  goto retry\r\n"
+        ")\r\n"
+        'del /f /q "%~f0" >nul 2>&1\r\n',
+        encoding="utf-8",
+    )
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+        subprocess, "DETACHED_PROCESS", 0
+    )
+    try:
+        subprocess.Popen(
+            ["cmd.exe", "/d", "/c", str(script)],
+            close_fds=True,
+            creationflags=creationflags,
+        )
+        os.write(1, f"Scheduled removal of standalone executable: {executable}\n".encode())
+        os._exit(0)
+    except OSError as exc:
+        script.unlink(missing_ok=True)
+        os.write(2, f"Error: could not schedule removal of {executable}: {exc}\n".encode())
+        os._exit(1)
 
 
 @dataclass(slots=True)
@@ -93,7 +140,9 @@ def cleanup_relay(
 
 
 def uninstall_and_exit() -> NoReturn:
-    """Uninstall the package and terminate without returning into removed dependencies."""
+    """Uninstall the package or remove the standalone executable, then terminate."""
+    if is_frozen_executable():
+        _remove_frozen_executable_and_exit()
     try:
         manager = _uninstall_distribution(CURRENT_DISTRIBUTION)
         os.write(1, f"Uninstalled {CURRENT_DISTRIBUTION} using {manager}.\n".encode())
@@ -104,7 +153,16 @@ def uninstall_and_exit() -> NoReturn:
 
 
 def update_and_exit(*, source: str = DEFAULT_UPDATE_SOURCE) -> NoReturn:
-    """Replace the installed package and exit before importing replaced dependencies again."""
+    """Replace a package-managed installation and terminate."""
+    if is_frozen_executable():
+        os.write(
+            2,
+            (
+                "Standalone executables are updated from GitHub Releases. "
+                f"Download the matching asset from {RELEASES_URL}.\n"
+            ).encode(),
+        )
+        os._exit(2)
     try:
         manager = _update_distribution(source)
         os.write(1, f"Updated {CURRENT_DISTRIBUTION} using {manager}.\n".encode())

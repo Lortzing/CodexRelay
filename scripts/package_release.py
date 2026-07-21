@@ -10,10 +10,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_TARGETS = {
+    "windows-x86": ".zip",
     "windows-x86_64": ".zip",
+    "windows-arm64": ".zip",
     "macos-x86_64": ".tar.gz",
     "macos-arm64": ".tar.gz",
     "linux-x86_64": ".tar.gz",
+    "linux-aarch64": ".tar.gz",
 }
 
 
@@ -28,8 +31,20 @@ def normalize_version(value: str) -> str:
 
 def installation_text(target: str) -> str:
     if target.startswith("windows-"):
-        return """CodexRelay portable package\n\n1. Move cxr.exe to a permanent directory.\n2. Add that directory to PATH.\n3. Open a new terminal and run: cxr status\n\nThe executable is unsigned. Windows SmartScreen may show a warning.\n"""
-    return """CodexRelay portable package\n\n1. Make the executable runnable: chmod +x cxr\n2. Move it to a directory on PATH, for example: mkdir -p ~/.local/bin && mv cxr ~/.local/bin/cxr\n3. Open a new terminal and run: cxr status\n"""
+        return """CodexRelay portable package
+
+1. Move cxr.exe to a permanent directory.
+2. Add that directory to PATH.
+3. Open a new terminal and run: cxr status
+
+The executable is unsigned. Windows SmartScreen may show a warning.
+"""
+    return """CodexRelay portable package
+
+1. Make the executable runnable: chmod +x cxr
+2. Move it to a directory on PATH, for example: mkdir -p ~/.local/bin && mv cxr ~/.local/bin/cxr
+3. Open a new terminal and run: cxr status
+"""
 
 
 def _tar_filter(member: tarfile.TarInfo) -> tarfile.TarInfo:
