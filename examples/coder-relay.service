@@ -1,0 +1,14 @@
+[Unit]
+Description=CoderRelay Codex profile failover watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cdy auto official backup --watch --interval 60
+Restart=on-failure
+RestartSec=10
+Environment=CODER_RELAY_HOME=%h/.config/coder-relay
+
+[Install]
+WantedBy=default.target

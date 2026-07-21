@@ -15,10 +15,10 @@ if TYPE_CHECKING:
     import typer
 
 _COMPLETION_SCHEMA_VERSION = 3
-_BLOCK_BEGIN = "# >>> codex-relay completion >>>"
-_BLOCK_END = "# <<< codex-relay completion <<<"
+_BLOCK_BEGIN = "# >>> coder-relay completion >>>"
+_BLOCK_END = "# <<< coder-relay completion <<<"
 _SUPPORTED_SHELLS = {"bash", "zsh", "fish"}
-_PROGRAMS = ("cxr", "codex-relay")
+_PROGRAMS = ("cdy", "coder-relay")
 
 
 def _completion_var(program: str) -> str:
@@ -79,7 +79,7 @@ def _upsert_managed_block(path: Path, block: str) -> None:
 def _install_zsh_or_bash(app: "typer.Typer", shell: str, app_home: Path, home: Path) -> list[Path]:
     completion_dir = app_home / "completions"
     completion_dir.mkdir(parents=True, exist_ok=True)
-    source_file = completion_dir / f"codex-relay.{shell}"
+    source_file = completion_dir / f"coder-relay.{shell}"
     combined = "\n".join(_completion_source(app, shell, program) for program in _PROGRAMS)
     source_file.write_text(combined, encoding="utf-8")
     try:
@@ -147,7 +147,7 @@ def install_completion(
 
 
 def uninstall_completion(*, app_home: Path | None = None, home: Path | None = None) -> list[Path]:
-    """Remove CodexRelay completion artifacts."""
+    """Remove CoderRelay completion artifacts."""
     resolved_home = (home or Path.home()).expanduser()
     resolved_app_home = (app_home or default_app_home()).expanduser()
     changed: list[Path] = []
@@ -170,8 +170,8 @@ def uninstall_completion(*, app_home: Path | None = None, home: Path | None = No
 
     for candidate in (
         resolved_app_home / "completion.json",
-        resolved_app_home / "completions" / "codex-relay.zsh",
-        resolved_app_home / "completions" / "codex-relay.bash",
+        resolved_app_home / "completions" / "coder-relay.zsh",
+        resolved_app_home / "completions" / "coder-relay.bash",
     ):
         if candidate.exists():
             candidate.unlink()
@@ -188,7 +188,7 @@ def _completion_request_in_progress() -> bool:
 
 def ensure_completion(app: "typer.Typer") -> None:
     """Silently install completion on the first interactive CLI invocation."""
-    if os.environ.get("CODEX_RELAY_DISABLE_COMPLETION") == "1":
+    if os.environ.get("CODER_RELAY_DISABLE_COMPLETION") == "1":
         return
     if _completion_request_in_progress():
         return

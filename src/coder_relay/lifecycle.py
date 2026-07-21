@@ -12,18 +12,18 @@ from typing import NoReturn
 from .completion import uninstall_completion
 from .errors import RelayError
 
-CURRENT_DISTRIBUTION = "codex-relay"
-DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CodexRelay.git"
-RELEASES_URL = "https://github.com/Lortzing/CodexRelay/releases/latest"
+CURRENT_DISTRIBUTION = "coder-relay"
+DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CoderRelay.git"
+RELEASES_URL = "https://github.com/Lortzing/CoderRelay/releases/latest"
 
 
 def is_frozen_executable() -> bool:
-    """Return whether CodexRelay is running from a standalone frozen executable."""
+    """Return whether CoderRelay is running from a standalone frozen executable."""
     return bool(getattr(sys, "frozen", False))
 
 
 def _find_windows_uninstaller(executable: Path) -> Path | None:
-    """Return the Inno Setup uninstaller next to a packaged cxr.exe, if present."""
+    """Return the Inno Setup uninstaller next to a packaged cdy.exe, if present."""
     candidates = sorted(executable.parent.glob("unins*.exe"))
     return candidates[0] if candidates else None
 
@@ -53,18 +53,14 @@ def _remove_frozen_executable_and_exit() -> NoReturn:
     if uninstaller is not None:
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         try:
-            subprocess.Popen(
-                [str(uninstaller)],
-                close_fds=True,
-                creationflags=creationflags,
-            )
-            os.write(1, f"Started the CodexRelay uninstaller: {uninstaller}\n".encode())
+            subprocess.Popen([str(uninstaller)], close_fds=True, creationflags=creationflags)
+            os.write(1, f"Started the CoderRelay uninstaller: {uninstaller}\n".encode())
             os._exit(0)
         except OSError as exc:
             os.write(2, f"Error: could not start {uninstaller}: {exc}\n".encode())
             os._exit(1)
 
-    script = Path(tempfile.gettempdir()) / f"codex-relay-uninstall-{os.getpid()}.cmd"
+    script = Path(tempfile.gettempdir()) / f"coder-relay-uninstall-{os.getpid()}.cmd"
     script.write_text(
         "@echo off\r\n"
         ":retry\r\n"
@@ -149,25 +145,17 @@ def _update_distribution(source: str) -> str:
         return "pip"
 
     detail = (result.stderr or result.stdout).strip() or uv_error
-    raise RelayError(detail or "Could not update CodexRelay with uv, pipx, or pip.")
+    raise RelayError(detail or "Could not update CoderRelay with uv, pipx, or pip.")
 
 
-def cleanup_relay(
-    *,
-    app_home: Path,
-    purge: bool,
-    user_home: Path | None = None,
-) -> CleanupResult:
+def cleanup_relay(*, app_home: Path, purge: bool, user_home: Path | None = None) -> CleanupResult:
     """Remove completion artifacts and optionally all managed data before package removal."""
     removed = uninstall_completion(app_home=app_home, home=user_home)
     data_removed = False
     if purge and app_home.exists():
         shutil.rmtree(app_home)
         data_removed = True
-    return CleanupResult(
-        completion_files_removed=len(removed),
-        data_removed=data_removed,
-    )
+    return CleanupResult(completion_files_removed=len(removed), data_removed=data_removed)
 
 
 def uninstall_and_exit() -> NoReturn:

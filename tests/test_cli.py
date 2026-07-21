@@ -5,9 +5,9 @@ from pathlib import Path
 import typer
 from typer.testing import CliRunner
 
-from codex_relay import entrypoint as cli
-from codex_relay.entrypoint import app
-from codex_relay.lifecycle import CleanupResult
+from coder_relay import entrypoint as cli
+from coder_relay.entrypoint import app
+from coder_relay.lifecycle import CleanupResult
 
 runner = CliRunner()
 
@@ -46,8 +46,8 @@ def test_status_first_run_imports_current_profile(tmp_path: Path, chatgpt_auth: 
 def test_only_current_entry_points_are_published() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert pyproject["project"]["scripts"] == {
-        "codex-relay": "codex_relay.entrypoint:main",
-        "cxr": "codex_relay.entrypoint:main",
+        "coder-relay": "coder_relay.entrypoint:main",
+        "cdy": "coder_relay.entrypoint:main",
     }
 
 

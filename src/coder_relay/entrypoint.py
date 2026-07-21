@@ -26,8 +26,8 @@ app.registered_commands[:] = [
 def update(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation.")] = False,
 ) -> None:
-    """Update CodexRelay from the GitHub main branch without changing profile data."""
-    if not yes and not typer.confirm("Update CodexRelay from GitHub main?", default=True):
+    """Update CoderRelay from the GitHub main branch without changing profile data."""
+    if not yes and not typer.confirm("Update CoderRelay from GitHub main?", default=True):
         console.print("Update cancelled.")
         raise typer.Exit(0)
     console.print("Updating the installed package; profile data will be preserved...")
@@ -47,20 +47,20 @@ def uninstall(
     ] = False,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation.")] = False,
 ) -> None:
-    """Uninstall CodexRelay and choose whether managed profile data is preserved."""
+    """Uninstall CoderRelay and choose whether managed profile data is preserved."""
     manager = base_cli._manager(ctx)
     should_purge = purge
 
     if purge:
         if not yes and not typer.confirm(
-            "Permanently delete all CodexRelay profiles, backups, and state?",
+            "Permanently delete all CoderRelay profiles, backups, and state?",
             default=False,
         ):
             console.print("Uninstall cancelled.")
             raise typer.Exit(0)
     elif not yes:
         keep_data = typer.confirm(
-            "Preserve CodexRelay profile data, backups, and state?",
+            "Preserve CoderRelay profile data, backups, and state?",
             default=True,
         )
         should_purge = not keep_data
@@ -84,7 +84,7 @@ def uninstall(
 
 
 def main() -> None:
-    """Run the public CodexRelay CLI."""
+    """Run the public CoderRelay CLI."""
     completion_init()
     if "uninstall" not in sys.argv[1:]:
         ensure_completion(app)

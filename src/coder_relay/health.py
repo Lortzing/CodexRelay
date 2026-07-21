@@ -11,7 +11,7 @@ import httpx
 from .models import ProbeResult, Profile
 from .usage import fetch_chatgpt_usage, parse_auth_json
 
-USER_AGENT = "codex-relay/0.6.0"
+USER_AGENT = "coder-relay/0.7.0"
 
 
 def _redact(text: str, secret: str) -> str:

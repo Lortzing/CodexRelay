@@ -25,13 +25,13 @@ def validate_name(name: str) -> str:
 
 
 def default_app_home() -> Path:
-    override = os.environ.get("CODEX_RELAY_HOME")
+    override = os.environ.get("CODER_RELAY_HOME")
     if override:
         return Path(override).expanduser()
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
-        return Path(xdg).expanduser() / "codex-relay"
-    return Path.home() / ".config" / "codex-relay"
+        return Path(xdg).expanduser() / "coder-relay"
+    return Path.home() / ".config" / "coder-relay"
 
 
 

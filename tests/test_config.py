@@ -1,4 +1,4 @@
-from codex_relay.config import build_api_config, build_chatgpt_config
+from coder_relay.config import build_api_config, build_chatgpt_config
 
 
 def test_build_chatgpt_config_preserves_other_settings():

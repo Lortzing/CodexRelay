@@ -3,8 +3,8 @@ from pathlib import Path
 
 import httpx
 
-from codex_relay.health import probe_profile
-from codex_relay.models import HealthConfig, Profile
+from coder_relay.health import probe_profile
+from coder_relay.models import HealthConfig, Profile
 
 
 def test_api_responses_probe(tmp_path: Path):
@@ -57,7 +57,7 @@ def test_api_auth_error(tmp_path: Path):
 def test_api_balance_and_redaction(tmp_path: Path):
     auth = tmp_path / "auth.json"
     auth.write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "secret"}))
-    from codex_relay.models import BalanceConfig
+    from coder_relay.models import BalanceConfig
 
     profile = Profile(
         name="api",

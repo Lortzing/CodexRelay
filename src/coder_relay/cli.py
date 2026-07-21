@@ -15,7 +15,6 @@ from rich.live import Live
 from rich.table import Table
 
 from .completion import ensure_completion
-from .lifecycle import cleanup_relay, uninstall_and_exit
 from .errors import RelayError
 from .manager import RelayManager
 from .models import ProbeResult, Profile
@@ -27,7 +26,7 @@ from .storage import (
 )
 
 app = typer.Typer(
-    name="codex-relay",
+    name="coder-relay",
     help="Manage Codex ChatGPT and API-key profiles with health checks and automatic failover.",
     no_args_is_help=True,
     add_completion=False,
@@ -53,7 +52,7 @@ def callback(
     ctx: typer.Context,
     home: Annotated[
         Path | None,
-        typer.Option("--home", help="CodexRelay data directory."),
+        typer.Option("--home", help="CoderRelay data directory."),
     ] = None,
     codex_home: Annotated[
         Path | None,
@@ -71,10 +70,8 @@ def callback(
     bootstrap_profile: Profile | None = None
     bootstrap_error: str | None = None
     completion_request = bool(
-        os.environ.get("_CR_COMPLETE")
-        or os.environ.get("_CODEX_RELAY_COMPLETE")
-        or os.environ.get("_CSW_COMPLETE")
-        or os.environ.get("_CODEX_SWITCH_COMPLETE")
+        os.environ.get("_CDY_COMPLETE")
+        or os.environ.get("_CODER_RELAY_COMPLETE")
     )
     if (
         not ctx.resilient_parsing
@@ -84,6 +81,8 @@ def callback(
         try:
             bootstrap_profile = manager.bootstrap_current_profile()
         except (RelayError, OSError) as exc:
+            # First-run import is best-effort. An invalid or missing current
+            # Codex configuration must not block commands that can repair it.
             bootstrap_error = str(exc)
     ctx.obj = AppContext(
         manager,
@@ -249,15 +248,6 @@ def use_profile(
     if backup:
         console.print(f"Previous active files backed up to {backup}.")
     console.print("Restart existing Codex CLI/App processes so they reload auth and config files.")
-
-
-@app.command("list", hidden=True)
-def list_profiles(
-    ctx: typer.Context,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    """Compatibility alias for ``status --no-probe``."""
-    status(ctx, no_probe=True, watch=False, interval=30.0, json_output=json_output)
 
 
 def _usage_text(result: ProbeResult) -> str:
@@ -488,50 +478,6 @@ def remove(
     console.print(f"Removed profile [bold]{name}[/bold].")
 
 
-@app.command("uninstall")
-def uninstall(
-    ctx: typer.Context,
-    purge: Annotated[
-        bool,
-        typer.Option(
-            "--purge",
-            help="Also delete CodexRelay profiles, backups, state, and cached metadata.",
-        ),
-    ] = False,
-    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation.")] = False,
-    legacy: Annotated[
-        bool,
-        typer.Option(
-            "--legacy",
-            help="Also try to uninstall the legacy codex-switchboard package.",
-        ),
-    ] = False,
-) -> None:
-    """Remove CodexRelay and shell completion; preserve profiles unless --purge is used."""
-    manager = _manager(ctx)
-    if not yes:
-        action = "uninstall CodexRelay and permanently delete all managed data" if purge else "uninstall CodexRelay while preserving managed data"
-        if not typer.confirm(f"Proceed to {action}?"):
-            console.print("Uninstall cancelled.")
-            raise typer.Exit(0)
-    try:
-        result = cleanup_relay(
-            app_home=manager.paths.app_home,
-            purge=purge,
-        )
-    except OSError as exc:
-        _fail(exc)
-    console.print(f"Removed {result.completion_files_removed} completion artifact(s).")
-    if result.data_removed:
-        console.print("Managed profiles, backups, and state were deleted.")
-    else:
-        console.print(f"Managed data was preserved at {manager.paths.app_home}.")
-    console.print("The active ~/.codex/auth.json and config.toml were not removed.")
-    console.print("Removing the installed package...")
-    console.file.flush()
-    uninstall_and_exit(include_legacy_package=legacy)
-
-
 @app.command("doctor")
 def doctor(
     ctx: typer.Context,
@@ -542,7 +488,7 @@ def doctor(
     if json_output:
         typer.echo(json.dumps(checks, ensure_ascii=False, indent=2))
         raise typer.Exit(0 if all(item["ok"] for item in checks) else 1)
-    table = Table(title="CodexRelay doctor")
+    table = Table(title="CoderRelay doctor")
     table.add_column("Result", justify="center")
     table.add_column("Check")
     table.add_column("Detail")

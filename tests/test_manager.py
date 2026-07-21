@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from codex_relay.manager import RelayManager
-from codex_relay.models import ProbeResult
+from coder_relay.manager import RelayManager
+from coder_relay.models import ProbeResult
 
 
 def test_add_and_switch_profiles(paths, chatgpt_auth):

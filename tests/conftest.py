@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_relay.storage import Paths
+from coder_relay.storage import Paths
 
 
 def jwt(payload: dict) -> str:

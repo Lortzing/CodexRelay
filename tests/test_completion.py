@@ -2,8 +2,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from codex_relay.entrypoint import app
-from codex_relay.completion import install_completion, uninstall_completion
+from coder_relay.entrypoint import app
+from coder_relay.completion import install_completion, uninstall_completion
 
 runner = CliRunner()
 
@@ -22,26 +22,26 @@ def test_zsh_completion_installs_for_public_commands(tmp_path: Path) -> None:
 
     files = install_completion(app, shell="zsh", app_home=app_home, home=home)
 
-    source = (app_home / "completions" / "codex-relay.zsh").read_text()
+    source = (app_home / "completions" / "coder-relay.zsh").read_text()
     zshrc = (home / ".zshrc").read_text()
-    assert "#compdef cxr" in source
-    assert "#compdef codex-relay" in source
-    assert "_CXR_COMPLETE=complete_zsh" in source
-    assert "_CODEX_RELAY_COMPLETE=complete_zsh" in source
-    assert "codex-relay completion" in zshrc
+    assert "#compdef cdy" in source
+    assert "#compdef coder-relay" in source
+    assert "_CDY_COMPLETE=complete_zsh" in source
+    assert "_CODER_RELAY_COMPLETE=complete_zsh" in source
+    assert "coder-relay completion" in zshrc
     assert files
 
     install_completion(app, shell="zsh", app_home=app_home, home=home)
-    assert (home / ".zshrc").read_text().count("# >>> codex-relay completion >>>") == 1
+    assert (home / ".zshrc").read_text().count("# >>> coder-relay completion >>>") == 1
 
 
 def test_fish_completion_installs_for_public_commands(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
     files = install_completion(app, shell="fish", app_home=tmp_path / "app", home=home)
-    assert {path.name for path in files} == {"cxr.fish", "codex-relay.fish"}
-    assert "complete --command cxr --no-files" in (
-        home / ".config/fish/completions/cxr.fish"
+    assert {path.name for path in files} == {"cdy.fish", "coder-relay.fish"}
+    assert "complete --command cdy --no-files" in (
+        home / ".config/fish/completions/cdy.fish"
     ).read_text()
 
 
@@ -54,5 +54,5 @@ def test_uninstall_completion_removes_current_artifacts(tmp_path: Path) -> None:
     removed = uninstall_completion(app_home=app_home, home=home)
 
     assert removed
-    assert "codex-relay completion" not in (home / ".zshrc").read_text()
+    assert "coder-relay completion" not in (home / ".zshrc").read_text()
     assert not (app_home / "completion.json").exists()

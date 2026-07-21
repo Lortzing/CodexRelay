@@ -1,4 +1,4 @@
-from codex_relay.usage import parse_auth_json, parse_usage_payload
+from coder_relay.usage import parse_auth_json, parse_usage_payload
 
 
 def test_parse_chatgpt_auth(chatgpt_auth):
@@ -30,7 +30,7 @@ def test_parse_usage_payload():
 
 def test_fetch_chatgpt_usage_headers(chatgpt_auth):
     import httpx
-    from codex_relay.usage import fetch_chatgpt_usage
+    from coder_relay.usage import fetch_chatgpt_usage
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer access-token"

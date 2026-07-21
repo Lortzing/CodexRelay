@@ -10,7 +10,7 @@ from tomlkit.items import Table
 
 from .errors import InvalidProfileError
 
-DEFAULT_CONFIG = "# Managed by Codex and CodexRelay.\n"
+DEFAULT_CONFIG = "# Managed by Codex and CoderRelay.\n"
 
 
 def read_base_config(path: Path | None, fallback: Path | None = None) -> str:

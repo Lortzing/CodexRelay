@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.coder-relay.auto</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/cdy</string>
+    <string>auto</string>
+    <string>official</string>
+    <string>backup</string>
+    <string>--watch</string>
+    <string>--interval</string>
+    <string>60</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/coder-relay.out.log</string>
+  <key>StandardErrorPath</key><string>/tmp/coder-relay.err.log</string>
+</dict>
+</plist>

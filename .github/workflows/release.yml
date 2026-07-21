@@ -2,12 +2,11 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to publish, for example v0.6.0
+        description: Existing version tag to publish, for example v0.7.0
         required: true
         type: string
 
@@ -29,15 +28,11 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-
-      - name: Read and verify version
-        id: version
+      - id: version
         shell: bash
         env:
           REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -50,26 +45,14 @@ jobs:
           print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
           PY
           )"
-          if [[ "$tag" != v* ]]; then
-            echo "Release tag must start with v: $tag" >&2
-            exit 1
-          fi
-          if [[ "$version" != "$project_version" ]]; then
-            echo "Tag $tag does not match project version $project_version" >&2
-            exit 1
-          fi
+          [[ "$tag" == v* ]] || { echo "Release tag must start with v: $tag" >&2; exit 1; }
+          [[ "$version" == "$project_version" ]] || { echo "Tag $tag does not match project version $project_version" >&2; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install uv and Python
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.13"
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-
-      - name: Run tests
-        run: |
+      - run: |
           uv sync --extra dev
           uv run pytest
 
@@ -96,82 +79,48 @@ jobs:
             python-arch: arm64
             expected-bits: 64
             expected-machine: ARM64
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.tag }}
-
-      - name: Set up native Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           architecture: ${{ matrix.python-arch }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-
-      - name: Verify build architecture
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Verify architecture
         shell: pwsh
         env:
           EXPECTED_BITS: ${{ matrix.expected-bits }}
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
         run: |
-          python -c "import os, platform, struct; bits=struct.calcsize('P')*8; machine=platform.machine(); expected_bits=int(os.environ['EXPECTED_BITS']); expected_machine=os.environ.get('EXPECTED_MACHINE', ''); print(f'Python architecture: {bits}-bit; runner machine: {machine}'); assert bits == expected_bits; assert not expected_machine or machine.lower() == expected_machine.lower()"
-
-      - name: Install project and PyInstaller
+          python -c "import os, platform, struct; bits=struct.calcsize('P')*8; machine=platform.machine(); assert bits == int(os.environ['EXPECTED_BITS']); expected=os.environ.get('EXPECTED_MACHINE', ''); assert not expected or machine.lower() == expected.lower()"
+      - name: Build cdy.exe
         shell: pwsh
         run: |
           uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
           uv pip install --python .release-venv "pyinstaller==$env:PYINSTALLER_VERSION" .
-
-      - name: Build cxr.exe
-        shell: pwsh
-        run: |
-          .release-venv\Scripts\python.exe -m PyInstaller `
-            --clean `
-            --noconfirm `
-            --onefile `
-            --console `
-            --noupx `
-            --name cxr `
-            scripts\cxr_launcher.py
-          .\dist\cxr.exe --help
-
+          .release-venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --onefile --console --noupx --name cdy scripts\cdy_launcher.py
+          .\dist\cdy.exe --help
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
-
       - name: Build Setup EXE and portable ZIP
         shell: pwsh
         run: |
-          .\scripts\build_windows_installer.ps1 `
-            -Binary .\dist\cxr.exe `
-            -Architecture "${{ matrix.architecture }}" `
-            -Version "${{ needs.validate.outputs.version }}" `
-            -OutputDir release-assets
-
-      - name: Smoke test Setup EXE
+          .\scripts\build_windows_installer.ps1 -Binary .\dist\cdy.exe -Architecture "${{ matrix.architecture }}" -Version "${{ needs.validate.outputs.version }}" -OutputDir release-assets
+      - name: Smoke test installer
         shell: pwsh
         run: |
-          $setup = Get-ChildItem release-assets -Filter "CodexRelay-Setup-*.exe" | Select-Object -First 1
+          $setup = Get-ChildItem release-assets -Filter "CoderRelay-Setup-*.exe" | Select-Object -First 1
           if (-not $setup) { throw "Setup executable was not produced." }
-          $installDir = Join-Path $env:RUNNER_TEMP "CodexRelay-Smoke"
+          $installDir = Join-Path $env:RUNNER_TEMP "CoderRelay-Smoke"
           & $setup.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
           if ($LASTEXITCODE -ne 0) { throw "Installer smoke test failed." }
-          & (Join-Path $installDir "cxr.exe") --help
-          if ($LASTEXITCODE -ne 0) { throw "Installed cxr.exe failed." }
+          & (Join-Path $installDir "cdy.exe") --help
           $uninstaller = Get-ChildItem $installDir -Filter "unins*.exe" | Select-Object -First 1
-          if ($uninstaller) {
-            & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          }
-
-      - name: Upload Windows assets
-        uses: actions/upload-artifact@v7
+          if ($uninstaller) { & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART }
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.architecture }}
           path: release-assets/*
@@ -194,65 +143,30 @@ jobs:
             runner: macos-15
             python-arch: arm64
             expected-machine: arm64
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.tag }}
-
-      - name: Set up native Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           architecture: ${{ matrix.python-arch }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-
-      - name: Verify runner architecture
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Verify architecture
         shell: bash
         env:
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
-        run: |
-          python - <<'PY'
-          import os, platform
-          actual = platform.machine()
-          expected = os.environ['EXPECTED_MACHINE']
-          print(f'runner architecture: {actual}')
-          assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'
-          PY
-
-      - name: Install project and PyInstaller
+        run: python -c "import os, platform; assert platform.machine().lower() == os.environ['EXPECTED_MACHINE'].lower()"
+      - name: Build native executable
         shell: bash
         run: |
           uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
           uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
-
-      - name: Build native cxr executable
-        shell: bash
-        run: |
-          .release-venv/bin/python -m PyInstaller \
-            --clean --noconfirm --onefile --console --noupx \
-            --name cxr \
-            --target-arch "${{ matrix.architecture }}" \
-            scripts/cxr_launcher.py
-          ./dist/cxr --help
-
+          .release-venv/bin/python -m PyInstaller --clean --noconfirm --onefile --console --noupx --name cdy --target-arch "${{ matrix.architecture }}" scripts/cdy_launcher.py
+          ./dist/cdy --help
       - name: Build PKG and DMG
-        shell: bash
-        run: |
-          ./scripts/build_macos_dmg.sh \
-            --binary ./dist/cxr \
-            --architecture "${{ matrix.architecture }}" \
-            --version "${{ needs.validate.outputs.version }}" \
-            --output-dir release-assets
-
-      - name: Upload macOS DMG
-        uses: actions/upload-artifact@v7
+        run: ./scripts/build_macos_dmg.sh --binary ./dist/cdy --architecture "${{ matrix.architecture }}" --version "${{ needs.validate.outputs.version }}" --output-dir release-assets
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.architecture }}
           path: release-assets/*.dmg
@@ -275,76 +189,41 @@ jobs:
             runner: ubuntu-24.04-arm
             python-arch: arm64
             expected-machine: aarch64
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.tag }}
-
-      - name: Set up native Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           architecture: ${{ matrix.python-arch }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-
-      - name: Set up Go for nFPM
-        uses: actions/setup-go@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
           cache: false
-
       - name: Install packaging tools
-        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm
           go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Verify runner architecture
-        shell: bash
+      - name: Verify architecture
         env:
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
-        run: |
-          python - <<'PY'
-          import os, platform
-          actual = platform.machine()
-          expected = os.environ['EXPECTED_MACHINE']
-          print(f'runner architecture: {actual}')
-          assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'
-          PY
-
-      - name: Build native cxr executable
-        shell: bash
+        run: python -c "import os, platform; assert platform.machine().lower() == os.environ['EXPECTED_MACHINE'].lower()"
+      - name: Build native executable
         run: |
           uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
           uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
-          .release-venv/bin/python -m PyInstaller \
-            --clean --noconfirm --onefile --console --noupx \
-            --name cxr \
-            scripts/cxr_launcher.py
-          ./dist/cxr --help
-
+          .release-venv/bin/python -m PyInstaller --clean --noconfirm --onefile --console --noupx --name cdy scripts/cdy_launcher.py
+          ./dist/cdy --help
       - name: Build TAR.GZ, DEB, and RPM
-        shell: bash
         run: |
-          ./scripts/build_linux_packages.sh \
-            --binary ./dist/cxr \
-            --architecture "${{ matrix.architecture }}" \
-            --version "${{ needs.validate.outputs.version }}" \
-            --output-dir release-assets
+          ./scripts/build_linux_packages.sh --binary ./dist/cdy --architecture "${{ matrix.architecture }}" --version "${{ needs.validate.outputs.version }}" --output-dir release-assets
           dpkg-deb --info release-assets/*.deb
           rpm -qip release-assets/*.rpm
-
-      - name: Upload Linux packages
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.architecture }}
           path: |
@@ -356,39 +235,23 @@ jobs:
 
   github-release:
     name: Publish GitHub Release
-    needs:
-      - validate
-      - windows-installers
-      - macos-installers
-      - linux-packages
+    needs: [validate, windows-installers, macos-installers, linux-packages]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-
     steps:
-      - name: Download release assets
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
           path: downloaded-assets
-
-      - name: Collect and verify release assets
+      - name: Collect and verify assets
         shell: bash
         run: |
           mkdir -p release-assets
           mapfile -t files < <(find downloaded-assets -type f -print | sort)
-          if [[ "${#files[@]}" -ne 14 ]]; then
-            printf 'Expected 14 release assets, found %s\n' "${#files[@]}" >&2
-            printf '%s\n' "${files[@]}" >&2
-            exit 1
-          fi
-          for file in "${files[@]}"; do
-            cp "$file" release-assets/
-          done
+          [[ "${#files[@]}" -eq 14 ]] || { printf 'Expected 14 release assets, found %s\n' "${#files[@]}" >&2; printf '%s\n' "${files[@]}" >&2; exit 1; }
+          for file in "${files[@]}"; do cp "$file" release-assets/; done
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
-          ls -lh release-assets
-
       - name: Create or update GitHub Release
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
@@ -396,8 +259,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
           else
-            gh release create "$RELEASE_TAG" release-assets/* \
-              --verify-tag \
-              --generate-notes \
-              --title "CodexRelay $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" release-assets/* --verify-tag --generate-notes --title "CoderRelay $RELEASE_TAG"
           fi

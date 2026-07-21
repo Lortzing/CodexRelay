@@ -74,6 +74,8 @@ class RelayManager:
             return None
 
         with FileLock(self.paths.lock_file):
+            # Another first-run process may have completed the import while this
+            # process was waiting for the lock.
             if self.list_profiles():
                 return None
             return self.import_current_profile()
@@ -357,7 +359,7 @@ class RelayManager:
                 return None, "state points to a missing or invalid profile"
             if self._profile_matches_active(state.active_profile):
                 return state.active_profile, "managed"
-            return state.active_profile, "active files were modified outside CodexRelay"
+            return state.active_profile, "active files were modified outside CoderRelay"
         return None, "unmanaged"
 
     def switch(self, name: str, *, reason: str = "manual") -> Path | None:
@@ -370,6 +372,7 @@ class RelayManager:
             try:
                 atomic_write(self.paths.active_auth, source_auth.read_bytes(), 0o600)
                 atomic_write(self.paths.active_config, source_config.read_bytes(), 0o600)
+                # Validate the files after replacement before committing state.
                 parse_auth_json(self.paths.active_auth)
                 validate_toml(self.paths.active_config.read_text(encoding="utf-8"))
                 state = self._state()
@@ -494,7 +497,7 @@ class RelayManager:
         }
         if action == "switch" and target:
             self.switch(target, reason=f"automatic: {reason}")
-            state = self._state()
+            state = self._state()  # reload timestamps written by switch()
         state.counters = updated_counters
         self._save_state(state)
         return {

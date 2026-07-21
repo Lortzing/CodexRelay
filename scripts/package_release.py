@@ -21,9 +21,7 @@ SUPPORTED_TARGETS = {
 
 
 def normalize_version(value: str) -> str:
-    version = value.strip()
-    if version.startswith("v"):
-        version = version[1:]
+    version = value.strip().removeprefix("v")
     if not version:
         raise ValueError("Version cannot be empty.")
     return version
@@ -31,24 +29,22 @@ def normalize_version(value: str) -> str:
 
 def installation_text(target: str) -> str:
     if target.startswith("windows-"):
-        return """CodexRelay portable package
+        return """CoderRelay portable package
 
-1. Move cxr.exe to a permanent directory.
+1. Move cdy.exe to a permanent directory.
 2. Add that directory to PATH.
-3. Open a new terminal and run: cxr status
-
-The executable is unsigned. Windows SmartScreen may show a warning.
+3. Open a new terminal and run: cdy status
 """
-    return """CodexRelay portable package
+    return """CoderRelay portable package
 
-1. Make the executable runnable: chmod +x cxr
-2. Move it to a directory on PATH, for example: mkdir -p ~/.local/bin && mv cxr ~/.local/bin/cxr
-3. Open a new terminal and run: cxr status
+1. Make the executable runnable: chmod +x cdy
+2. Move it to a directory on PATH, for example: mkdir -p ~/.local/bin && mv cdy ~/.local/bin/cdy
+3. Open a new terminal and run: cdy status
 """
 
 
 def _tar_filter(member: tarfile.TarInfo) -> tarfile.TarInfo:
-    if member.isfile() and member.name.endswith("/cxr"):
+    if member.isfile() and member.name.endswith("/cdy"):
         member.mode |= 0o111
     return member
 
@@ -62,12 +58,12 @@ def build_archive(*, binary: Path, target: str, version: str, output_dir: Path) 
 
     version = normalize_version(version)
     output_dir.mkdir(parents=True, exist_ok=True)
-    package_name = f"codex-relay-{version}-{target}"
+    package_name = f"coder-relay-{version}-{target}"
 
-    with tempfile.TemporaryDirectory(prefix="codex-relay-release-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="coder-relay-release-") as temporary:
         stage = Path(temporary) / package_name
         stage.mkdir()
-        executable_name = "cxr.exe" if target.startswith("windows-") else "cxr"
+        executable_name = "cdy.exe" if target.startswith("windows-") else "cdy"
         executable = stage / executable_name
         shutil.copy2(binary, executable)
         if not target.startswith("windows-"):
@@ -89,12 +85,11 @@ def build_archive(*, binary: Path, target: str, version: str, output_dir: Path) 
             archive = output_dir / f"{package_name}.tar.gz"
             with tarfile.open(archive, "w:gz") as handle:
                 handle.add(stage, arcname=package_name, filter=_tar_filter)
-
     return archive
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a CodexRelay standalone release archive.")
+    parser = argparse.ArgumentParser(description="Create a CoderRelay standalone release archive.")
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--target", choices=sorted(SUPPORTED_TARGETS), required=True)
     parser.add_argument("--version", required=True)
@@ -104,13 +99,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    archive = build_archive(
-        binary=args.binary,
-        target=args.target,
-        version=args.version,
-        output_dir=args.output_dir,
-    )
-    print(archive)
+    print(build_archive(binary=args.binary, target=args.target, version=args.version, output_dir=args.output_dir))
 
 
 if __name__ == "__main__":

@@ -55,4 +55,4 @@ Profiles are evaluated in priority order without modifying active Codex files. T
 
 ## Existing Codex processes
 
-Codex clients can cache authentication and configuration. Automatic file switching primarily affects newly started processes. `codex-relay launch` selects a healthy profile and then starts a fresh Codex process so it reads the selected files.
+Codex clients can cache authentication and configuration. Automatic file switching primarily affects newly started processes. `coder-relay launch` selects a healthy profile and then starts a fresh Codex process so it reads the selected files.
