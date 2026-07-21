@@ -1,24 +1,37 @@
 # CodexRelay
 
-CodexRelay is a profile manager and automatic failover tool for the OpenAI Codex CLI. It supports:
+简体中文 | [English](README.en.md)
 
-- ChatGPT/Codex login profiles imported from `auth.json`.
-- OpenAI-compatible API profiles configured with an API key, base URL, and model.
-- Manual switching, health checks, automatic failover, and recovery.
-- ChatGPT plan, rate-limit window, and credit display.
-- Optional provider-specific API balance endpoints.
-- Human-readable status tables and JSON output.
+[![CI](https://github.com/Lortzing/CodexRelay/actions/workflows/ci.yml/badge.svg)](https://github.com/Lortzing/CodexRelay/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/Lortzing/CodexRelay)](https://github.com/Lortzing/CodexRelay/releases)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/Lortzing/CodexRelay)](LICENSE)
 
-Profiles are stored independently and activated by atomically replacing the active Codex `auth.json` and `config.toml`.
+CodexRelay 是面向 OpenAI Codex CLI 的多账户与多 API 配置管理工具，支持 `auth.json`、OpenAI 兼容 API、状态检测、用量展示、手动切换和自动故障转移。
 
-## Requirements
+每个 Profile 都独立保存完整的 `auth.json` 与 `config.toml`。切换时，CodexRelay 会先备份当前配置，再通过文件锁和原子替换更新 Codex 的活动配置。
 
-- Python 3.11 or newer.
-- `uv` for the recommended installation and lifecycle commands.
-- Codex CLI available as `codex` for actual Codex use.
-- Network access for health and usage checks.
+## 主要功能
 
-## Installation
+- 导入并管理多个 ChatGPT/Codex `auth.json` 登录配置。
+- 管理 `API Key + Base URL + Model` 类型的 OpenAI 兼容 API 配置。
+- 首次安装或首次运行时自动导入当前 Codex 配置。
+- 手动切换 Profile，并在切换失败时自动回滚。
+- 检查 ChatGPT 账户状态、套餐、限额窗口和 Credits。
+- 通过 Responses API、Models API 或自定义接口检查第三方 API 状态。
+- 按优先级自动故障转移，并在高优先级配置恢复后自动切回。
+- 以表格或 JSON 形式展示配置、健康状态、延迟和余额信息。
+- 支持 Bash、Zsh 和 Fish 自动补全。
+- 提供自更新和可选择保留 Profile 数据的卸载命令。
+
+## 环境要求
+
+- Python 3.11 或更高版本。
+- 推荐使用 `uv` 安装和管理。
+- 实际使用 Codex 时，需要系统中存在 `codex` 命令。
+- 健康检查和用量查询需要网络连接。
+
+## 安装
 
 ```bash
 git clone https://github.com/Lortzing/CodexRelay.git
@@ -26,57 +39,57 @@ cd CodexRelay
 ./install.sh
 ```
 
-The installer registers both commands:
+安装后可使用：
 
 ```bash
 cxr --help
 codex-relay --help
 ```
 
-`cxr` is the recommended short command. Shell completion is installed silently; completion-management flags are not exposed. When the profile library is empty, installation or the first business command automatically imports the active `$CODEX_HOME/auth.json` and `config.toml`.
+`cxr` 是推荐的短命令。安装脚本会静默配置当前 Shell 的自动补全，并在 Profile 库为空时自动导入当前 `$CODEX_HOME/auth.json` 和 `config.toml`。
 
-Direct installation is also supported:
+也可以直接从 GitHub 安装：
 
 ```bash
 uv tool install --force git+https://github.com/Lortzing/CodexRelay.git
 cxr status --no-probe
 ```
 
-## Storage
+## 数据目录
 
 ```text
 ~/.config/codex-relay/
 ├── profiles/
 │   └── <name>/
-│       ├── profile.json   # Non-secret metadata
-│       ├── auth.json      # Credentials; mode 0600
-│       └── config.toml    # Complete Codex config for this profile
+│       ├── profile.json   # 非敏感元数据
+│       ├── auth.json      # 认证信息，权限 0600
+│       └── config.toml    # 该 Profile 的完整 Codex 配置
 ├── backups/
 ├── state.json
 └── switch.lock
 ```
 
-Active Codex files are written to:
+Codex 当前活动配置位于：
 
 ```text
 ~/.codex/auth.json
 ~/.codex/config.toml
 ```
 
-Override locations with `CODEX_RELAY_HOME`, `CODEX_HOME`, or the global `--home` and `--codex-home` options.
+可通过 `CODEX_RELAY_HOME`、`CODEX_HOME`，或全局参数 `--home`、`--codex-home` 修改目录。
 
-## Automatic first-run import
+## 自动导入当前 Codex 配置
 
-When no managed profile exists, CodexRelay imports the active Codex configuration automatically. The importer detects ChatGPT-token or API-key login, preserves both files exactly, and extracts non-secret metadata such as email, plan, model, provider id, and base URL.
+当尚未存在任何受管理 Profile 时，安装过程或首次业务命令会自动读取当前 Codex 配置。导入器能够识别 ChatGPT Token 登录、API Key 登录、当前模型、Provider ID、Base URL、邮箱和套餐等非敏感元数据。
 
-Explicit import remains available:
+也可以显式执行：
 
 ```bash
 cxr import-current
 cxr import-current official
 ```
 
-Optional API probe and balance overrides:
+为 API 配置指定健康检查和余额接口：
 
 ```bash
 cxr import-current gateway \
@@ -85,15 +98,15 @@ cxr import-current gateway \
   --balance-path data.balance
 ```
 
-## Add profiles
+## 添加 Profile
 
-Import a ChatGPT `auth.json`:
+导入 ChatGPT/Codex `auth.json`：
 
 ```bash
 cxr add-auth official ~/.codex/auth.json
 ```
 
-Optionally use a specific base configuration and model:
+指定基础配置和模型：
 
 ```bash
 cxr add-auth official ./auth.json \
@@ -101,7 +114,7 @@ cxr add-auth official ./auth.json \
   --model gpt-5.6
 ```
 
-Add an API key, URL, and model:
+添加 API Key 配置：
 
 ```bash
 cxr add-api backup \
@@ -110,7 +123,7 @@ cxr add-api backup \
   --api-key 'sk-...'
 ```
 
-Avoid shell history by reading the key from standard input:
+为避免 API Key 进入 Shell 历史，推荐通过标准输入传入：
 
 ```bash
 printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
@@ -119,11 +132,11 @@ printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
   --api-key-stdin
 ```
 
-Without either API-key option, CodexRelay prompts for the key with hidden input.
+未提供 API Key 参数时，CodexRelay 会通过隐藏输入提示读取密钥。
 
-### API health modes
+## API 健康检查
 
-Responses probe, which may consume a small number of tokens:
+Responses API 检查会发送一个最小请求，可能消耗少量 Token：
 
 ```bash
 cxr add-api backup \
@@ -132,7 +145,7 @@ cxr add-api backup \
   --health-mode responses
 ```
 
-Models-list probe:
+Models API 检查：
 
 ```bash
 cxr add-api backup \
@@ -141,7 +154,7 @@ cxr add-api backup \
   --health-mode models
 ```
 
-Custom probe:
+自定义健康检查：
 
 ```bash
 cxr add-api backup \
@@ -152,7 +165,7 @@ cxr add-api backup \
   --expected-text ok
 ```
 
-Optional provider-specific balance endpoint:
+不同 API Provider 没有统一的余额协议。可为具体 Provider 配置余额接口和 JSON 路径：
 
 ```bash
 cxr add-api backup \
@@ -162,7 +175,7 @@ cxr add-api backup \
   --balance-path data.balance
 ```
 
-## Status and manual switching
+## 状态展示与手动切换
 
 ```bash
 cxr status --no-probe
@@ -173,19 +186,19 @@ cxr use official
 cxr use backup
 ```
 
-The status table combines profile metadata, active state, health, latency, ChatGPT usage, optional API balance, and diagnostics.
+`status` 会统一展示当前活动 Profile、类型、模型、API 地址、健康状态、延迟、ChatGPT 套餐与限额、自定义 API 余额和诊断信息。
 
-Before a switch, current active files are backed up. Replacement uses a process lock and atomic writes; validation failure restores the previous active files. Existing Codex processes may cache authentication, so restart them after a manual switch.
+手动切换前会备份当前活动文件。替换过程使用进程锁和原子写入；验证失败时会恢复原配置。已经运行的 Codex 进程可能缓存认证信息，因此手动切换后应重新启动 Codex。
 
-## Automatic switching
+## 自动切换
 
-One evaluation in priority order:
+按优先级执行一次检查：
 
 ```bash
 cxr auto official backup
 ```
 
-Continuous monitoring:
+持续监控：
 
 ```bash
 cxr auto official backup \
@@ -196,62 +209,55 @@ cxr auto official backup \
   --cooldown 300
 ```
 
-Policy:
+自动切换策略：
 
-1. Earlier profiles have higher priority.
-2. The active profile fails over after the configured consecutive-failure threshold.
-3. A higher-priority profile is restored after the consecutive-recovery threshold.
-4. Recovery respects cooldown; emergency failover does not.
-5. If every candidate is unhealthy, active files remain unchanged.
+1. 参数顺序越靠前，优先级越高。
+2. 当前 Profile 连续失败达到阈值后，切换到优先级最高的健康 Profile。
+3. 更高优先级 Profile 连续恢复达到阈值后，自动切回。
+4. 恢复切换受冷却时间限制；紧急故障转移不受冷却时间阻止。
+5. 所有候选都不健康时，保持当前活动配置不变。
 
-Select a healthy profile and launch a fresh Codex process:
+选择健康 Profile 后启动新的 Codex 进程：
 
 ```bash
 cxr launch -p official -p backup -- exec "say hello"
 ```
 
-Everything after `--` is passed to `codex`.
+`--` 后面的参数会原样传递给 `codex`。
 
-## Update
+## 更新与卸载
 
-Update from the GitHub `main` branch while preserving profiles and active Codex files:
+从 GitHub `main` 分支更新，Profile 和当前 Codex 配置不会被修改：
 
 ```bash
 cxr update
-```
-
-Skip confirmation:
-
-```bash
 cxr update --yes
 ```
 
-## Uninstall
-
-Interactive uninstall asks whether profiles, backups, and state should be preserved:
+交互式卸载会询问是否保留 Profile、备份和状态：
 
 ```bash
 cxr uninstall
 ```
 
-Non-interactive uninstall preserves managed data by default:
+跳过确认并默认保留数据：
 
 ```bash
 cxr uninstall --yes
 ```
 
-Permanently delete all CodexRelay-managed data:
+连同所有 CodexRelay 管理数据一起删除：
 
 ```bash
 cxr uninstall --purge
 cxr uninstall --purge --yes
 ```
 
-Uninstall removes shell-completion artifacts but never removes active `~/.codex/auth.json` or `~/.codex/config.toml`.
+卸载不会删除当前活动的 `~/.codex/auth.json` 或 `~/.codex/config.toml`。
 
-## Background monitoring
+## 后台监控
 
-### systemd user service
+systemd 用户服务：
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -261,9 +267,7 @@ systemctl --user enable --now codex-relay.service
 journalctl --user -u codex-relay.service -f
 ```
 
-### macOS launchd
-
-Edit the absolute executable path in `examples/com.codex-relay.auto.plist`, then run:
+macOS launchd：先修改 `examples/com.codex-relay.auto.plist` 中的可执行文件绝对路径，然后执行：
 
 ```bash
 mkdir -p ~/Library/LaunchAgents
@@ -271,9 +275,9 @@ cp examples/com.codex-relay.auto.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.codex-relay.auto.plist
 ```
 
-## ChatGPT usage query
+## ChatGPT 用量查询
 
-For ChatGPT profiles, CodexRelay reads the access token and account id from `auth.json`, then queries:
+对于 ChatGPT Profile，CodexRelay 会从 `auth.json` 读取 access token 和 account id，然后请求：
 
 ```text
 GET https://chatgpt.com/backend-api/wham/usage
@@ -281,18 +285,43 @@ Authorization: Bearer <access token>
 ChatGPT-Account-Id: <account id>
 ```
 
-This is an unstable implementation endpoint, not a guaranteed public API. Use `cxr status --no-probe` to avoid network access.
+该接口属于不稳定的实现接口，并非有稳定承诺的公开 API。使用 `cxr status --no-probe` 可完全跳过网络探测。
 
-## Security
+## 安全说明
 
-- Profile directories use restrictive permissions where supported.
-- Credential and state files use mode `0600` where supported.
-- API keys and access tokens are not printed in status tables or JSON output.
-- Prefer `--api-key-stdin` over a direct argument to avoid shell history.
-- Custom health and balance endpoints receive the configured API key as a Bearer token.
-- Backups contain credentials and must be protected.
+- Profile 目录在支持的平台上使用限制性权限。
+- 认证文件和状态文件使用 `0600` 权限。
+- 状态表和 JSON 输出不会显示 API Key 或 access token。
+- 推荐使用 `--api-key-stdin`，避免密钥进入 Shell 历史。
+- 自定义健康检查和余额接口会收到 Bearer Token。
+- 备份中包含认证信息，应妥善保护。
 
-## Diagnostics and development
+## 自动化测试与发布
+
+项目包含两套 GitHub Actions：
+
+- `CI`：在推送和 Pull Request 时，测试 Python 3.11、3.12、3.13，并覆盖 Linux、macOS 和 Windows。
+- `Release`：推送 `v*` 标签后，校验标签版本、运行测试、构建 Wheel 和源码包、执行安装冒烟测试，并自动创建 GitHub Release。
+
+发布新版本：
+
+```bash
+# 先在 pyproject.toml 和 src/codex_relay/__init__.py 中更新版本
+
+git tag v0.6.0
+git push origin v0.6.0
+```
+
+GitHub Release 会自动附带：
+
+```text
+codex_relay-<version>-py3-none-any.whl
+codex_relay-<version>.tar.gz
+```
+
+可选的 PyPI 发布默认关闭。配置 PyPI Trusted Publisher、创建 GitHub Environment `pypi`，并将仓库变量 `PUBLISH_TO_PYPI` 设置为 `true` 后，同一标签工作流会自动执行 `uv publish`。
+
+## 诊断与开发
 
 ```bash
 cxr doctor
@@ -300,5 +329,5 @@ cxr doctor --json
 
 uv sync --extra dev
 uv run pytest
-uv build
+uv build --no-sources
 ```
