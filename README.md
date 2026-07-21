@@ -250,8 +250,6 @@ Release Workflow 会：
 5. 打包 7 个平台产物并生成 `SHA256SUMS.txt`。
 6. 创建或更新 GitHub Release。
 
-本项目不向 PyPI 或 GitHub Packages 发布。
-
 ## 安全说明
 
 - Profile 和备份中包含凭据，应妥善保护。

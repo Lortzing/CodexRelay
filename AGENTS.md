@@ -56,7 +56,7 @@ When no profiles exist, installation or the first business command automatically
 
 - Releases use semantic version tags prefixed with `v`.
 - The tag must match `[project].version` in `pyproject.toml`.
-- Releases are published only through GitHub Releases; there is no PyPI or GitHub Packages publishing.
+- Releases are published through GitHub Releases.
 - PyInstaller builds run natively on the target OS and CPU architecture.
 - Release targets: Windows x86/x86_64/ARM64, macOS x86_64/ARM64, Linux x86_64/AArch64.
 - Every executable must pass a CLI smoke test before publication.

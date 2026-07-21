@@ -250,8 +250,6 @@ The release workflow:
 5. Packages seven platform assets and generates `SHA256SUMS.txt`.
 6. Creates or updates the GitHub Release.
 
-This project does not publish to PyPI or GitHub Packages.
-
 ## Security
 
 - Profiles and backups contain credentials and must be protected.
