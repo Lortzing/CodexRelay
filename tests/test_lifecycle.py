@@ -43,27 +43,15 @@ def test_update_prefers_uv_tool(tmp_path: Path, monkeypatch) -> None:
     assert commands == [["/usr/bin/uv", "tool", "install", "--force", "git+https://example.invalid/repo.git"]]
 
 
-def test_frozen_executable_detection(monkeypatch) -> None:
-    monkeypatch.setattr(lifecycle.sys, "frozen", True, raising=False)
-    assert lifecycle.is_frozen_executable()
+def test_find_windows_uninstaller_prefers_inno_setup_file(tmp_path: Path) -> None:
+    executable = tmp_path / "cxr.exe"
+    executable.write_bytes(b"exe")
+    (tmp_path / "unins001.exe").write_bytes(b"newer")
+    expected = tmp_path / "unins000.exe"
+    expected.write_bytes(b"uninstaller")
+
+    assert lifecycle._find_windows_uninstaller(executable) == expected
 
 
-def test_frozen_uninstall_removes_unix_executable(tmp_path: Path, monkeypatch) -> None:
-    executable = tmp_path / "cxr"
-    executable.write_bytes(b"binary")
-    monkeypatch.setattr(lifecycle.os, "name", "posix")
-    monkeypatch.setattr(lifecycle.sys, "executable", str(executable))
-
-    def fake_exit(code: int) -> None:
-        raise SystemExit(code)
-
-    monkeypatch.setattr(lifecycle.os, "_exit", fake_exit)
-
-    try:
-        lifecycle._remove_frozen_executable_and_exit()
-    except SystemExit as exc:
-        assert exc.code == 0
-    else:
-        raise AssertionError("expected frozen uninstall to terminate")
-
-    assert not executable.exists()
+def test_find_windows_uninstaller_returns_none(tmp_path: Path) -> None:
+    assert lifecycle._find_windows_uninstaller(tmp_path / "cxr.exe") is None

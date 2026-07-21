@@ -20,6 +20,7 @@ concurrency:
 
 env:
   PYINSTALLER_VERSION: "6.21.0"
+  NFPM_VERSION: "v2.47.0"
 
 jobs:
   validate:
@@ -72,56 +73,29 @@ jobs:
           uv sync --extra dev
           uv run pytest
 
-  build-binaries:
-    name: Build ${{ matrix.target }}
+  windows-installers:
+    name: Windows ${{ matrix.architecture }}
     needs: validate
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: windows-x86
+          - architecture: x86
             runner: windows-2022
             python-arch: x86
             expected-bits: 32
             expected-machine: ""
-            binary: dist/cxr.exe
-          - target: windows-x86_64
+          - architecture: x86_64
             runner: windows-2022
             python-arch: x64
             expected-bits: 64
             expected-machine: AMD64
-            binary: dist/cxr.exe
-          - target: windows-arm64
+          - architecture: arm64
             runner: windows-11-arm
             python-arch: arm64
             expected-bits: 64
             expected-machine: ARM64
-            binary: dist/cxr.exe
-          - target: macos-x86_64
-            runner: macos-15-intel
-            python-arch: x64
-            expected-bits: 64
-            expected-machine: x86_64
-            binary: dist/cxr
-          - target: macos-arm64
-            runner: macos-15
-            python-arch: arm64
-            expected-bits: 64
-            expected-machine: arm64
-            binary: dist/cxr
-          - target: linux-x86_64
-            runner: ubuntu-22.04
-            python-arch: x64
-            expected-bits: 64
-            expected-machine: x86_64
-            binary: dist/cxr
-          - target: linux-aarch64
-            runner: ubuntu-24.04-arm
-            python-arch: arm64
-            expected-bits: 64
-            expected-machine: aarch64
-            binary: dist/cxr
 
     steps:
       - name: Check out repository
@@ -142,27 +116,173 @@ jobs:
           cache-dependency-glob: pyproject.toml
 
       - name: Verify build architecture
-        shell: bash
+        shell: pwsh
         env:
           EXPECTED_BITS: ${{ matrix.expected-bits }}
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
         run: |
-          python - <<'PY'
-          import os
-          import platform
-          import struct
+          python -c "import os, platform, struct; bits=struct.calcsize('P')*8; machine=platform.machine(); expected_bits=int(os.environ['EXPECTED_BITS']); expected_machine=os.environ.get('EXPECTED_MACHINE', ''); print(f'Python architecture: {bits}-bit; runner machine: {machine}'); assert bits == expected_bits; assert not expected_machine or machine.lower() == expected_machine.lower()"
 
-          bits = struct.calcsize("P") * 8
-          machine = platform.machine()
-          expected_bits = int(os.environ["EXPECTED_BITS"])
-          expected_machine = os.environ.get("EXPECTED_MACHINE", "")
-          print(f"Python architecture: {bits}-bit; runner machine: {machine}")
-          assert bits == expected_bits, f"expected {expected_bits}-bit Python, got {bits}-bit"
-          if expected_machine:
-              assert machine.lower() == expected_machine.lower(), (
-                  f"expected machine {expected_machine}, got {machine}"
-              )
+      - name: Install project and PyInstaller
+        shell: pwsh
+        run: |
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
+          uv pip install --python .release-venv "pyinstaller==$env:PYINSTALLER_VERSION" .
+
+      - name: Build cxr.exe
+        shell: pwsh
+        run: |
+          .release-venv\Scripts\python.exe -m PyInstaller `
+            --clean `
+            --noconfirm `
+            --onefile `
+            --console `
+            --noupx `
+            --name cxr `
+            scripts\cxr_launcher.py
+          .\dist\cxr.exe --help
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Setup EXE and portable ZIP
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          .\scripts\build_windows_installer.ps1 `
+            -Binary .\dist\cxr.exe `
+            -Architecture "${{ matrix.architecture }}" `
+            -Version "${{ needs.validate.outputs.version }}" `
+            -OutputDir release-assets
+
+      - name: Smoke test Setup EXE
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release-assets -Filter "CodexRelay-Setup-*.exe" | Select-Object -First 1
+          if (-not $setup) { throw "Setup executable was not produced." }
+          $installDir = Join-Path $env:RUNNER_TEMP "CodexRelay-Smoke"
+          & $setup.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Installer smoke test failed." }
+          & (Join-Path $installDir "cxr.exe") --help
+          if ($LASTEXITCODE -ne 0) { throw "Installed cxr.exe failed." }
+          $uninstaller = Get-ChildItem $installDir -Filter "unins*.exe" | Select-Object -First 1
+          if ($uninstaller) {
+            & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          }
+
+      - name: Upload Windows assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-${{ matrix.architecture }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-installers:
+    name: macOS ${{ matrix.architecture }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: macos-15-intel
+            python-arch: x64
+            expected-machine: x86_64
+          - architecture: arm64
+            runner: macos-15
+            python-arch: arm64
+            expected-machine: arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Set up native Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Verify runner architecture
+        shell: bash
+        env:
+          EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+        run: |
+          python - <<'PY'
+          import os, platform
+          actual = platform.machine()
+          expected = os.environ['EXPECTED_MACHINE']
+          print(f'runner architecture: {actual}')
+          assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'
           PY
+
+      - name: Configure Apple signing
+        shell: bash
+        env:
+          APP_CERT_BASE64: ${{ secrets.MACOS_APPLICATION_CERT_P12_BASE64 }}
+          APP_CERT_PASSWORD: ${{ secrets.MACOS_APPLICATION_CERT_PASSWORD }}
+          INSTALLER_CERT_BASE64: ${{ secrets.MACOS_INSTALLER_CERT_P12_BASE64 }}
+          INSTALLER_CERT_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}
+          APP_IDENTITY: ${{ secrets.MACOS_APPLICATION_IDENTITY }}
+          INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          values=(
+            "$APP_CERT_BASE64" "$APP_CERT_PASSWORD"
+            "$INSTALLER_CERT_BASE64" "$INSTALLER_CERT_PASSWORD"
+            "$APP_IDENTITY" "$INSTALLER_IDENTITY"
+            "$NOTARY_APPLE_ID" "$NOTARY_TEAM_ID" "$NOTARY_PASSWORD"
+          )
+          present=0
+          for value in "${values[@]}"; do
+            [[ -n "$value" ]] && present=$((present + 1))
+          done
+          if [[ "$present" -eq 0 ]]; then
+            echo "MACOS_SIGNING_ENABLED=false" >> "$GITHUB_ENV"
+            echo "Apple signing secrets are not configured; producing an explicitly unsigned DMG."
+            exit 0
+          fi
+          if [[ "$present" -ne "${#values[@]}" ]]; then
+            echo "Apple signing is partially configured. Set all documented macOS signing secrets or remove all of them." >&2
+            exit 1
+          fi
+
+          keychain="$RUNNER_TEMP/codex-relay.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          printf '%s' "$APP_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/application.p12"
+          printf '%s' "$INSTALLER_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/application.p12" -k "$keychain" -P "$APP_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import "$RUNNER_TEMP/installer.p12" -k "$keychain" -P "$INSTALLER_CERT_PASSWORD" -T /usr/bin/productsign -T /usr/bin/pkgbuild -T /usr/bin/security
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security find-identity -v "$keychain"
+
+          echo "MACOS_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+          echo "MACOS_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "MACOS_APPLICATION_IDENTITY=$APP_IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_ID=$NOTARY_APPLE_ID" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$NOTARY_TEAM_ID" >> "$GITHUB_ENV"
+          echo "APPLE_APP_PASSWORD=$NOTARY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Install project and PyInstaller
         shell: bash
@@ -170,34 +290,139 @@ jobs:
           uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
           uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
 
-      - name: Build standalone executable
+      - name: Build native cxr executable
         shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            python_exe=".release-venv/Scripts/python.exe"
-          else
-            python_exe=".release-venv/bin/python"
+          args=(
+            --clean --noconfirm --onefile --console --noupx
+            --name cxr
+            --target-arch "${{ matrix.architecture }}"
+          )
+          if [[ "${MACOS_SIGNING_ENABLED:-false}" == "true" ]]; then
+            args+=(--codesign-identity "$MACOS_APPLICATION_IDENTITY")
           fi
-          "$python_exe" -m PyInstaller \
-            --clean \
-            --noconfirm \
-            --onefile \
-            --console \
-            --noupx \
-            --name cxr \
-            scripts/cxr_launcher.py
+          .release-venv/bin/python -m PyInstaller "${args[@]}" scripts/cxr_launcher.py
+          ./dist/cxr --help
+          codesign --verify --verbose=2 --strict ./dist/cxr
 
-      - name: Smoke test executable
-        run: python -c "import subprocess; subprocess.run([r'${{ matrix.binary }}', '--help'], check=True)"
+      - name: Build PKG and DMG
+        shell: bash
+        run: |
+          ./scripts/build_macos_dmg.sh \
+            --binary ./dist/cxr \
+            --architecture "${{ matrix.architecture }}" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --output-dir release-assets
 
-      - name: Create platform archive
-        run: python scripts/package_release.py --binary "${{ matrix.binary }}" --target "${{ matrix.target }}" --version "${{ needs.validate.outputs.version }}"
+      - name: Remove temporary keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${MACOS_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$MACOS_KEYCHAIN" || true
+          fi
+          rm -f "$RUNNER_TEMP/application.p12" "$RUNNER_TEMP/installer.p12"
 
-      - name: Upload platform archive
+      - name: Upload macOS DMG
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}
-          path: release-assets/*
+          name: macos-${{ matrix.architecture }}
+          path: release-assets/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-packages:
+    name: Linux ${{ matrix.architecture }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: ubuntu-22.04
+            python-arch: x64
+            expected-machine: x86_64
+          - architecture: aarch64
+            runner: ubuntu-24.04-arm
+            python-arch: arm64
+            expected-machine: aarch64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Set up native Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Set up Go for nFPM
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Install packaging tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+          go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify runner architecture
+        shell: bash
+        env:
+          EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+        run: |
+          python - <<'PY'
+          import os, platform
+          actual = platform.machine()
+          expected = os.environ['EXPECTED_MACHINE']
+          print(f'runner architecture: {actual}')
+          assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'
+          PY
+
+      - name: Build native cxr executable
+        shell: bash
+        run: |
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
+          uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
+          .release-venv/bin/python -m PyInstaller \
+            --clean --noconfirm --onefile --console --noupx \
+            --name cxr \
+            scripts/cxr_launcher.py
+          ./dist/cxr --help
+
+      - name: Build TAR.GZ, DEB, and RPM
+        shell: bash
+        run: |
+          ./scripts/build_linux_packages.sh \
+            --binary ./dist/cxr \
+            --architecture "${{ matrix.architecture }}" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --output-dir release-assets
+          dpkg-deb --info release-assets/*.deb
+          rpm -qip release-assets/*.rpm
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.architecture }}
+          path: |
+            release-assets/*.tar.gz
+            release-assets/*.deb
+            release-assets/*.rpm
           if-no-files-found: error
           retention-days: 7
 
@@ -205,13 +430,15 @@ jobs:
     name: Publish GitHub Release
     needs:
       - validate
-      - build-binaries
+      - windows-installers
+      - macos-installers
+      - linux-packages
     runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
-      - name: Download platform archives
+      - name: Download release assets
         uses: actions/download-artifact@v8
         with:
           path: downloaded-assets
@@ -220,16 +447,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets
-          mapfile -t files < <(find downloaded-assets -type f \( -name 'codex-relay-*.zip' -o -name 'codex-relay-*.tar.gz' \) -print | sort)
-          if [[ "${#files[@]}" -ne 7 ]]; then
-            printf 'Expected 7 platform archives, found %s\n' "${#files[@]}" >&2
+          mapfile -t files < <(find downloaded-assets -type f -print | sort)
+          if [[ "${#files[@]}" -ne 14 ]]; then
+            printf 'Expected 14 release assets, found %s\n' "${#files[@]}" >&2
             printf '%s\n' "${files[@]}" >&2
             exit 1
           fi
           for file in "${files[@]}"; do
             cp "$file" release-assets/
           done
-          (cd release-assets && sha256sum codex-relay-* > SHA256SUMS.txt)
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
           ls -lh release-assets
 
       - name: Create or update GitHub Release

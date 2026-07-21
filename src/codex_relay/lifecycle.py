@@ -22,6 +22,12 @@ def is_frozen_executable() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def _find_windows_uninstaller(executable: Path) -> Path | None:
+    """Return the Inno Setup uninstaller next to a packaged cxr.exe, if present."""
+    candidates = sorted(executable.parent.glob("unins*.exe"))
+    return candidates[0] if candidates else None
+
+
 def _remove_frozen_executable_and_exit() -> NoReturn:
     executable = Path(sys.executable).resolve()
     if os.name != "nt":
@@ -29,8 +35,33 @@ def _remove_frozen_executable_and_exit() -> NoReturn:
             executable.unlink()
             os.write(1, f"Removed standalone executable: {executable}\n".encode())
             os._exit(0)
+        except PermissionError:
+            os.write(
+                2,
+                (
+                    f"Error: {executable} is not writable. "
+                    "Run the command with elevated privileges or remove the installed package "
+                    "with the system package manager.\n"
+                ).encode(),
+            )
+            os._exit(1)
         except OSError as exc:
             os.write(2, f"Error: could not remove {executable}: {exc}\n".encode())
+            os._exit(1)
+
+    uninstaller = _find_windows_uninstaller(executable)
+    if uninstaller is not None:
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            subprocess.Popen(
+                [str(uninstaller)],
+                close_fds=True,
+                creationflags=creationflags,
+            )
+            os.write(1, f"Started the CodexRelay uninstaller: {uninstaller}\n".encode())
+            os._exit(0)
+        except OSError as exc:
+            os.write(2, f"Error: could not start {uninstaller}: {exc}\n".encode())
             os._exit(1)
 
     script = Path(tempfile.gettempdir()) / f"codex-relay-uninstall-{os.getpid()}.cmd"
