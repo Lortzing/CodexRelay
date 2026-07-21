@@ -47,15 +47,19 @@ jobs:
           - target: windows-x86_64
             runner: windows-latest
             binary: dist/cxr.exe
+            expected-machine: AMD64
           - target: macos-x86_64
             runner: macos-15-intel
             binary: dist/cxr
+            expected-machine: x86_64
           - target: macos-arm64
             runner: macos-15
             binary: dist/cxr
+            expected-machine: arm64
           - target: linux-x86_64
             runner: ubuntu-latest
             binary: dist/cxr
+            expected-machine: x86_64
 
     steps:
       - name: Check out repository
@@ -67,6 +71,9 @@ jobs:
           python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: pyproject.toml
+
+      - name: Verify runner architecture
+        run: python -c "import platform; actual=platform.machine(); expected='${{ matrix.expected-machine }}'; print(f'runner architecture: {actual}'); assert actual.lower() == expected.lower(), f'expected {expected}, got {actual}'"
 
       - name: Install project
         run: uv sync --extra dev
