@@ -20,11 +20,10 @@
 - `src/codex_relay/models.py`: persisted schemas and probe results.
 - `scripts/cxr_launcher.py`: PyInstaller entry point.
 - `scripts/package_release.py`: portable ZIP/TAR.GZ archive builder.
-- `scripts/build_windows_installer.ps1`: Windows Setup EXE, portable ZIP, and optional Authenticode signing.
+- `scripts/build_windows_installer.ps1`: Windows Setup EXE and portable ZIP builder.
 - `installers/windows/CodexRelay.iss`: Inno Setup installer definition and user-PATH management.
-- `scripts/build_macos_dmg.sh`: macOS PKG/DMG packaging, signing, notarization, and stapling.
+- `scripts/build_macos_dmg.sh`: macOS PKG/DMG builder.
 - `scripts/build_linux_packages.sh`: Linux TAR.GZ, DEB, and RPM packaging through nFPM.
-- `docs/SIGNING.md`: certificate, GitHub Secret, signing, and notarization instructions.
 - `.github/workflows/ci.yml`: cross-platform tests and standalone smoke build.
 - `.github/workflows/release.yml`: tag-driven native installers and GitHub Release publishing.
 
@@ -63,8 +62,6 @@ When no profiles exist, installation or the first business command automatically
 - Linux targets publish TAR.GZ, DEB, and RPM for x86_64 and AArch64.
 - Every binary and installer receives a smoke or structural verification before publication.
 - Release assets include `SHA256SUMS.txt`.
-- Signing is optional in CI but unsigned Windows/macOS assets must carry an `-unsigned` suffix.
-- Never expose certificate files, private keys, passwords, or notarization credentials in logs.
 
 ## Uninstall and Update
 

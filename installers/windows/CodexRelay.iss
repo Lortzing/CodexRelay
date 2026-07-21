@@ -54,12 +54,6 @@ ArchitecturesAllowed={#AllowedArch}
 #if defined(Install64Arch)
 ArchitecturesInstallIn64BitMode={#Install64Arch}
 #endif
-#ifdef EnableSigning
-SignTool=cxr
-SignedUninstaller=yes
-#else
-SignedUninstaller=no
-#endif
 VersionInfoVersion={#AppVersion}
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription=CodexRelay installer

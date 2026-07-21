@@ -37,7 +37,7 @@ The Setup executable installs `cxr.exe` in the current user's application direct
 cxr --help
 ```
 
-When Authenticode credentials are not configured, generated files include an `-unsigned` suffix and Windows SmartScreen may show an unknown-publisher warning.
+Windows may display a security warning for installers downloaded from the internet.
 
 ### macOS
 
@@ -52,7 +52,7 @@ Open the DMG and run the included `CodexRelay-<version>.pkg`. It installs:
 /usr/local/bin/cxr
 ```
 
-When Apple signing and notarization credentials are not configured, the DMG includes an `-unsigned` suffix and Gatekeeper may block it.
+macOS may display a security warning for disk images downloaded from the internet.
 
 ### Linux
 
@@ -124,7 +124,7 @@ cxr uninstall
 
 Active Codex files remain at `~/.codex/auth.json` and `~/.codex/config.toml`; uninstall does not remove them.
 
-## Release and signing
+## Release
 
 Push a tag that matches `pyproject.toml`:
 
@@ -134,8 +134,6 @@ git push origin v0.6.0
 ```
 
 The Release workflow builds native Windows Setup executables, macOS DMG/PKG installers, and Linux TAR/DEB/RPM packages, smoke-tests them, generates `SHA256SUMS.txt`, and uploads the assets to GitHub Releases.
-
-Signing requires your own Windows code-signing certificate and Apple Developer ID private keys. The workflow supports automated signing and macOS notarization; see [Signing and notarization](docs/SIGNING.en.md).
 
 ## Security
 
