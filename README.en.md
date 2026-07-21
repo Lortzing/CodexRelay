@@ -9,7 +9,7 @@
 
 CodexRelay is a multi-account and multi-API profile manager for the OpenAI Codex CLI. It supports `auth.json` logins, OpenAI-compatible APIs, status and usage checks, manual switching, and automatic failover.
 
-Each profile stores a complete `auth.json` and `config.toml`. Before activation, CodexRelay backs up the current files, acquires a process lock, and atomically replaces the active Codex configuration.
+Each profile stores a complete `auth.json` and `config.toml`. Before activation, CodexRelay backs up the active files, acquires a process lock, and atomically replaces the Codex configuration.
 
 ## Features
 
@@ -24,14 +24,42 @@ Each profile stores a complete `auth.json` and `config.toml`. Before activation,
 - Install silent completion for Bash, Zsh, and Fish.
 - Self-update and uninstall with an option to preserve profile data.
 
-## Requirements
-
-- Python 3.11 or newer.
-- `uv` is recommended for installation and lifecycle commands.
-- The `codex` executable is required for actual Codex use.
-- Network access is required for health and usage checks.
-
 ## Installation
+
+### Standalone GitHub Release packages
+
+Each release automatically contains four platform archives:
+
+| Operating system | Architecture | Release asset |
+|---|---|---|
+| Windows | x86_64 | `codex-relay-<version>-windows-x86_64.zip` |
+| macOS | Intel x86_64 | `codex-relay-<version>-macos-x86_64.tar.gz` |
+| macOS | Apple Silicon arm64 | `codex-relay-<version>-macos-arm64.tar.gz` |
+| Linux | x86_64 | `codex-relay-<version>-linux-x86_64.tar.gz` |
+
+A `SHA256SUMS` file is included for download verification.
+
+Windows:
+
+```powershell
+# Extract the archive, move cxr.exe to a permanent directory, and add it to PATH.
+cxr.exe --help
+```
+
+macOS / Linux:
+
+```bash
+chmod +x cxr
+mkdir -p ~/.local/bin
+mv cxr ~/.local/bin/cxr
+cxr --help
+```
+
+Standalone packages include the Python runtime and dependencies. No separate Python installation is required. Current artifacts are not commercially code-signed, so Windows SmartScreen or macOS Gatekeeper may display a warning.
+
+### Install from source
+
+Python 3.11+ and `uv` are required:
 
 ```bash
 git clone https://github.com/Lortzing/CodexRelay.git
@@ -39,21 +67,20 @@ cd CodexRelay
 ./install.sh
 ```
 
-The installer registers:
+Direct Git installation is also supported:
+
+```bash
+uv tool install --force git+https://github.com/Lortzing/CodexRelay.git
+```
+
+Available commands:
 
 ```bash
 cxr --help
 codex-relay --help
 ```
 
-`cxr` is the recommended short command. The installer silently configures shell completion and imports the active `$CODEX_HOME/auth.json` and `config.toml` when the profile library is empty.
-
-Direct installation is also supported:
-
-```bash
-uv tool install --force git+https://github.com/Lortzing/CodexRelay.git
-cxr status --no-probe
-```
+`cxr` is the recommended short command.
 
 ## Storage
 
@@ -69,7 +96,7 @@ cxr status --no-probe
 └── switch.lock
 ```
 
-Active Codex files are written to:
+Active Codex files are stored at:
 
 ```text
 ~/.codex/auth.json
@@ -80,22 +107,13 @@ Override locations with `CODEX_RELAY_HOME`, `CODEX_HOME`, or the global `--home`
 
 ## Automatic first-run import
 
-When no managed profile exists, CodexRelay automatically imports the active Codex configuration. It detects ChatGPT-token or API-key authentication and extracts non-secret metadata such as email, plan, model, provider id, and base URL.
+When no managed profile exists, installation or the first business command imports the active Codex configuration. The importer detects ChatGPT-token or API-key authentication and extracts non-secret metadata such as email, plan, model, provider id, and base URL.
 
 Explicit import remains available:
 
 ```bash
 cxr import-current
 cxr import-current official
-```
-
-Optional API probe and balance overrides:
-
-```bash
-cxr import-current gateway \
-  --health-mode responses \
-  --balance-url https://gateway.example.com/account/credits \
-  --balance-path data.balance
 ```
 
 ## Add profiles
@@ -106,15 +124,7 @@ Import a ChatGPT/Codex `auth.json`:
 cxr add-auth official ~/.codex/auth.json
 ```
 
-Optionally specify a base configuration and model:
-
-```bash
-cxr add-auth official ./auth.json \
-  --config ~/.codex/config.toml \
-  --model gpt-5.6
-```
-
-Add an API-key profile:
+Add an API profile:
 
 ```bash
 cxr add-api backup \
@@ -123,7 +133,7 @@ cxr add-api backup \
   --api-key 'sk-...'
 ```
 
-To avoid placing the API key in shell history, read it from standard input:
+Avoid shell history by reading the key from standard input:
 
 ```bash
 printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
@@ -132,11 +142,9 @@ printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
   --api-key-stdin
 ```
 
-Without an API-key option, CodexRelay prompts for the key using hidden input.
+## Health checks
 
-## API health checks
-
-Responses checks send a minimal request and may consume a small number of tokens:
+Minimal Responses API request:
 
 ```bash
 cxr add-api backup \
@@ -145,7 +153,7 @@ cxr add-api backup \
   --health-mode responses
 ```
 
-Models API check:
+Models API:
 
 ```bash
 cxr add-api backup \
@@ -165,16 +173,6 @@ cxr add-api backup \
   --expected-text ok
 ```
 
-API providers do not share a universal balance protocol. Configure a provider-specific endpoint and JSON path when available:
-
-```bash
-cxr add-api backup \
-  --url https://gateway.example.com/v1 \
-  --model gpt-5.6 \
-  --balance-url https://gateway.example.com/account/credits \
-  --balance-path data.balance
-```
-
 ## Status and manual switching
 
 ```bash
@@ -183,16 +181,13 @@ cxr status
 cxr status --watch --interval 30
 cxr status --json
 cxr use official
-cxr use backup
 ```
 
-The status view combines active state, profile metadata, model, endpoint, health, latency, ChatGPT usage, optional API balance, and diagnostics.
-
-Before a switch, active files are backed up. Replacement uses a process lock and atomic writes; validation failure restores the previous configuration. Existing Codex processes may cache authentication, so restart them after a manual switch.
+Before a switch, active files are backed up. Replacement uses a process lock and atomic writes; validation failure restores the previous files. Existing Codex processes may cache authentication, so restart Codex after switching.
 
 ## Automatic switching
 
-Evaluate once in priority order:
+Profile order defines priority:
 
 ```bash
 cxr auto official backup
@@ -213,7 +208,7 @@ Policy:
 
 1. Earlier profiles have higher priority.
 2. The active profile fails over after the configured consecutive-failure threshold.
-3. A higher-priority profile is restored after the configured consecutive-recovery threshold.
+3. A higher-priority profile is restored after the consecutive-recovery threshold.
 4. Recovery respects cooldown; emergency failover does not.
 5. If every candidate is unhealthy, active files remain unchanged.
 
@@ -227,7 +222,7 @@ Everything after `--` is passed to `codex`.
 
 ## Update and uninstall
 
-Update from the GitHub `main` branch while preserving profiles and active Codex files:
+Update a source installation:
 
 ```bash
 cxr update
@@ -240,7 +235,7 @@ Interactive uninstall asks whether profiles, backups, and state should be preser
 cxr uninstall
 ```
 
-Skip confirmation and preserve managed data by default:
+Preserve data without confirmation:
 
 ```bash
 cxr uninstall --yes
@@ -253,81 +248,41 @@ cxr uninstall --purge
 cxr uninstall --purge --yes
 ```
 
-Uninstall never removes the active `~/.codex/auth.json` or `~/.codex/config.toml`.
+Uninstall never removes active `~/.codex/auth.json` or `~/.codex/config.toml` files.
 
-## Background monitoring
+## Release workflow
 
-systemd user service:
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp examples/codex-relay.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now codex-relay.service
-journalctl --user -u codex-relay.service -f
-```
-
-macOS launchd: edit the absolute executable path in `examples/com.codex-relay.auto.plist`, then run:
+Push a tag that matches the version in `pyproject.toml`:
 
 ```bash
-mkdir -p ~/Library/LaunchAgents
-cp examples/com.codex-relay.auto.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.codex-relay.auto.plist
-```
-
-## ChatGPT usage query
-
-For ChatGPT profiles, CodexRelay reads the access token and account id from `auth.json`, then queries:
-
-```text
-GET https://chatgpt.com/backend-api/wham/usage
-Authorization: Bearer <access token>
-ChatGPT-Account-Id: <account id>
-```
-
-This is an unstable implementation endpoint, not a guaranteed public API. Use `cxr status --no-probe` to skip network probes.
-
-## Security
-
-- Profile directories use restrictive permissions where supported.
-- Credential and state files use mode `0600` where supported.
-- API keys and access tokens are not printed in status tables or JSON output.
-- Prefer `--api-key-stdin` to avoid shell history.
-- Custom health and balance endpoints receive the configured API key as a Bearer token.
-- Backups contain credentials and must be protected.
-
-## CI and releases
-
-The repository includes two GitHub Actions workflows:
-
-- `CI` tests Python 3.11, 3.12, and 3.13 across Linux, macOS, and Windows on pushes and pull requests.
-- `Release` validates the version tag, runs tests, builds a wheel and source distribution, performs installation smoke tests, and creates a GitHub Release when a `v*` tag is pushed.
-
-To publish a release:
-
-```bash
-# Update the version in pyproject.toml and src/codex_relay/__init__.py first.
-
-git tag v0.6.0
+git tag -a v0.6.0 -m "CodexRelay v0.6.0"
 git push origin v0.6.0
 ```
 
-The GitHub Release includes:
+The Release workflow automatically:
 
-```text
-codex_relay-<version>-py3-none-any.whl
-codex_relay-<version>.tar.gz
-```
+1. Verifies that the Git tag matches the project version.
+2. Runs tests in all four target environments.
+3. Builds four standalone executables with PyInstaller.
+4. Smoke-tests every executable with `cxr --help`.
+5. Creates ZIP or TAR.GZ platform archives.
+6. Generates `SHA256SUMS`.
+7. Creates or updates the GitHub Release and uploads all artifacts.
 
-Optional PyPI publishing is disabled by default. After configuring a PyPI Trusted Publisher, creating a GitHub Environment named `pypi`, and setting the repository variable `PUBLISH_TO_PYPI` to `true`, the same tag workflow runs `uv publish` automatically.
+## Security
 
-## Diagnostics and development
+- Profile directories and credential files use restrictive permissions.
+- API keys and access tokens are not printed in status tables or JSON output.
+- Prefer `--api-key-stdin` to avoid shell history.
+- Custom health and balance endpoints receive the configured Bearer token.
+- Backups may contain credentials and must be protected.
+- ChatGPT usage checks rely on an unstable implementation endpoint and may break after upstream changes.
+
+## Development
 
 ```bash
-cxr doctor
-cxr doctor --json
-
 uv sync --extra dev
 uv run pytest
+uv run cxr --help
 uv build --no-sources
 ```
