@@ -10,19 +10,21 @@
 
 - `src/codex_relay/cli.py`: core Typer/Rich command definitions.
 - `src/codex_relay/entrypoint.py`: public command surface and lifecycle commands.
-- `src/codex_relay/completion.py`: silent first-run Bash/Zsh/Fish completion installation for `cxr` and `codex-relay`.
+- `src/codex_relay/completion.py`: silent Bash/Zsh/Fish completion installation for `cxr` and `codex-relay`.
 - `src/codex_relay/lifecycle.py`: self-update, uninstall, completion cleanup, and optional data purge.
-- `src/codex_relay/manager.py`: profile lifecycle, idempotent first-run import, switching, automatic failover, and diagnostics.
+- `src/codex_relay/manager.py`: profile lifecycle, first-run import, switching, automatic failover, and diagnostics.
 - `src/codex_relay/health.py`: ChatGPT and OpenAI-compatible API probes.
 - `src/codex_relay/usage.py`: auth parsing and ChatGPT usage queries.
 - `src/codex_relay/config.py`: Codex TOML generation with comment-preserving edits.
 - `src/codex_relay/storage.py`: paths, atomic writes, process locks, and backups.
 - `src/codex_relay/models.py`: persisted schemas and probe results.
-- `install.sh`: installs the uv tool, silently configures completion, and bootstraps the current Codex configuration.
+- `scripts/cxr_launcher.py`: PyInstaller entry script for standalone executables.
+- `scripts/package_release.py`: creates platform-specific ZIP/TAR.GZ release archives.
+- `install.sh`: installs the uv tool, configures completion, and bootstraps the current Codex configuration.
 - `README.md`: default Simplified Chinese documentation.
 - `README.en.md`: English documentation linked from the default README.
-- `.github/workflows/ci.yml`: cross-platform test, build, and distribution smoke tests.
-- `.github/workflows/release.yml`: tag-driven GitHub Release packaging and optional PyPI Trusted Publishing.
+- `.github/workflows/ci.yml`: cross-platform tests and Linux standalone-binary smoke build.
+- `.github/workflows/release.yml`: tag-driven four-platform standalone release workflow.
 
 ## Main Commands
 
@@ -55,13 +57,14 @@ When no profiles exist, installation or the first business command automatically
 
 - Release tags use semantic versions prefixed with `v`, such as `v0.6.0`.
 - The tag version must match `[project].version` in `pyproject.toml`.
-- CI must pass before release work is considered complete.
-- GitHub Releases contain both wheel and source distribution artifacts.
-- PyPI publishing is optional and requires repository variable `PUBLISH_TO_PYPI=true`, GitHub Environment `pypi`, and a configured PyPI Trusted Publisher.
+- Releases are distributed through GitHub Releases.
+- The first four standalone targets are Windows x86_64, macOS x86_64, macOS arm64, and Linux x86_64.
+- Every executable must pass a `cxr --help` smoke test on its native runner.
+- Release assets include platform archives and `SHA256SUMS`.
 
 ## Uninstall and Update
 
-- `cxr update` updates from the repository main branch and preserves profile data.
+- `cxr update` updates source installations from the repository main branch and preserves profile data.
 - `cxr uninstall` asks whether profile data should be preserved.
 - `cxr uninstall --purge` deletes all managed data after confirmation.
 - Neither uninstall mode deletes active files under `~/.codex`.
