@@ -9,60 +9,65 @@
 
 CodexRelay is a multi-account and multi-API profile manager for the OpenAI Codex CLI. It supports `auth.json` logins, OpenAI-compatible APIs, status and usage checks, manual switching, and automatic failover.
 
-Each profile stores a complete `auth.json` and `config.toml`. Before activation, CodexRelay backs up the active files and updates them using a process lock and atomic replacement.
+Each profile stores a complete `auth.json` and `config.toml`. Before activation, CodexRelay backs up the active files, acquires a process lock, and atomically replaces the Codex configuration.
 
 ## Features
 
 - Manage multiple ChatGPT/Codex login profiles.
-- Manage OpenAI-compatible profiles using an API key, base URL, and model.
-- Import the active Codex configuration automatically on installation or first use.
-- Switch profiles with backup, validation, and rollback.
+- Manage OpenAI-compatible API profiles using an API key, base URL, and model.
+- Automatically import the active Codex configuration on first use.
+- Manual switching, health checks, failover, and preferred-profile recovery.
 - Display ChatGPT plan, rate-limit windows, credits, API balance, and latency.
-- Probe Responses, Models, or custom health endpoints.
-- Fail over by priority and recover automatically when preferred profiles become healthy.
-- Install completion for Bash, Zsh, and Fish.
-- Update and uninstall while optionally preserving managed profile data.
+- Bash, Zsh, and Fish completion.
+- Self-update and uninstall with optional profile-data preservation.
 
 ## Installation
 
-### Standalone executables
+### Windows
 
-Download the archive matching your operating system and processor from [Releases](https://github.com/Lortzing/CodexRelay/releases). Standalone builds do not require a preinstalled Python interpreter.
-
-| OS | Architecture | Release asset |
+| Architecture | Installer | Portable |
 |---|---|---|
-| Windows | 32-bit x86 | `codex-relay-<version>-windows-x86.zip` |
-| Windows | x86_64 / x64 | `codex-relay-<version>-windows-x86_64.zip` |
-| Windows | ARM64 | `codex-relay-<version>-windows-arm64.zip` |
-| macOS | Intel x86_64 | `codex-relay-<version>-macos-x86_64.tar.gz` |
-| macOS | Apple Silicon ARM64 | `codex-relay-<version>-macos-arm64.tar.gz` |
-| Linux | x86_64 / AMD64 | `codex-relay-<version>-linux-x86_64.tar.gz` |
-| Linux | ARM64 / AArch64 | `codex-relay-<version>-linux-aarch64.tar.gz` |
+| x86 32-bit | `CodexRelay-Setup-<version>-windows-x86.exe` | `CodexRelay-Portable-<version>-windows-x86.zip` |
+| x86_64 / x64 | `CodexRelay-Setup-<version>-windows-x86_64.exe` | `CodexRelay-Portable-<version>-windows-x86_64.zip` |
+| ARM64 | `CodexRelay-Setup-<version>-windows-arm64.exe` | `CodexRelay-Portable-<version>-windows-arm64.zip` |
 
-Linux/macOS:
+The Setup executable installs `cxr.exe` in the current user's application directory, adds it to the user `PATH`, and registers a standard uninstaller.
 
-```bash
-mkdir -p ~/.local/bin
-tar -xzf codex-relay-<version>-<platform>.tar.gz
-install -m 0755 codex-relay-<version>-<platform>/cxr ~/.local/bin/cxr
+```powershell
 cxr --help
 ```
 
-Windows: extract `cxr.exe`, place it in a directory on `PATH`, and run:
+When Authenticode credentials are not configured, generated files include an `-unsigned` suffix and Windows SmartScreen may show an unknown-publisher warning.
 
-```powershell
-cxr.exe --help
+### macOS
+
+| Architecture | Disk image |
+|---|---|
+| Intel x86_64 | `CodexRelay-<version>-macOS-x86_64.dmg` |
+| Apple Silicon ARM64 | `CodexRelay-<version>-macOS-arm64.dmg` |
+
+Open the DMG and run the included `CodexRelay-<version>.pkg`. It installs:
+
+```text
+/usr/local/bin/cxr
 ```
 
-Every release contains `SHA256SUMS.txt`:
+When Apple signing and notarization credentials are not configured, the DMG includes an `-unsigned` suffix and Gatekeeper may block it.
+
+### Linux
+
+| Architecture | Portable | Debian/Ubuntu | Fedora/RHEL |
+|---|---|---|---|
+| x86_64 | `codex-relay-<version>-linux-x86_64.tar.gz` | `codex-relay_<version>_amd64.deb` | `codex-relay-<version>-1.x86_64.rpm` |
+| ARM64/AArch64 | `codex-relay-<version>-linux-aarch64.tar.gz` | `codex-relay_<version>_arm64.deb` | `codex-relay-<version>-1.aarch64.rpm` |
 
 ```bash
-sha256sum -c SHA256SUMS.txt
+sudo apt install ./codex-relay_<version>_amd64.deb
+# or
+sudo rpm -Uvh ./codex-relay-<version>-1.x86_64.rpm
 ```
 
-The current executables are not commercially code-signed. macOS or Windows may display a security warning. Verify that the file came from this repository and check its SHA-256 digest before running it.
-
-### Install from source with uv
+### Install from source
 
 ```bash
 git clone https://github.com/Lortzing/CodexRelay.git
@@ -70,198 +75,81 @@ cd CodexRelay
 ./install.sh
 ```
 
-Or install directly from GitHub:
+Or install a fixed tag:
 
 ```bash
-uv tool install --force git+https://github.com/Lortzing/CodexRelay.git
-cxr status --no-probe
+uv tool install --force git+https://github.com/Lortzing/CodexRelay.git@v0.6.0
 ```
 
-The public commands are:
+## Verify downloads
+
+Every release contains `SHA256SUMS.txt`:
 
 ```bash
-cxr --help
-codex-relay --help
+sha256sum -c SHA256SUMS.txt
 ```
 
-`cxr` is the recommended short command.
-
-## Automatic first-run import
-
-When no managed profile exists, installation or the first business command imports:
-
-```text
-$CODEX_HOME/auth.json
-$CODEX_HOME/config.toml
-```
-
-Without `CODEX_HOME`, CodexRelay uses:
-
-```text
-~/.codex/auth.json
-~/.codex/config.toml
-```
-
-Explicit import remains available:
-
-```bash
-cxr import-current
-cxr import-current official
-```
-
-## Add profiles
-
-Import a ChatGPT/Codex login:
-
-```bash
-cxr add-auth official ~/.codex/auth.json
-```
-
-Add an API profile:
-
-```bash
-cxr add-api backup \
-  --url https://gateway.example.com/v1 \
-  --model gpt-5.6 \
-  --api-key 'sk-...'
-```
-
-Avoid shell history by reading the key from standard input:
-
-```bash
-printf '%s' "$GATEWAY_API_KEY" | cxr add-api backup \
-  --url https://gateway.example.com/v1 \
-  --model gpt-5.6 \
-  --api-key-stdin
-```
-
-## Status and manual switching
+## Common commands
 
 ```bash
 cxr status
-cxr status --no-probe
-cxr status --watch --interval 30
-cxr status --json
+cxr import-current
+cxr add-auth official ~/.codex/auth.json
+cxr add-api backup --url https://gateway.example.com/v1 --model gpt-5.6
 cxr use official
+cxr auto official backup --watch
+cxr launch -p official -p backup --
+cxr doctor
+cxr update
+cxr uninstall
 ```
 
-Existing Codex processes may cache authentication. Restart Codex after switching profiles.
-
-## Automatic failover
-
-Run one evaluation:
-
-```bash
-cxr auto official backup
-```
-
-Monitor continuously:
-
-```bash
-cxr auto official backup \
-  --watch \
-  --interval 60 \
-  --fail-threshold 2 \
-  --recover-threshold 2 \
-  --cooldown 300
-```
-
-Policy:
+## Automatic switching policy
 
 1. Earlier profiles have higher priority.
 2. The active profile fails over after the consecutive-failure threshold.
 3. A preferred profile is restored after the consecutive-recovery threshold.
 4. Recovery respects cooldown; emergency failover does not.
-5. If every candidate is unhealthy, the active files remain unchanged.
-
-Select a healthy profile and launch a new Codex process:
-
-```bash
-cxr launch -p official -p backup -- exec "say hello"
-```
-
-Arguments after `--` are passed directly to `codex`.
-
-## Update
-
-For installations managed by `uv tool`, `pipx`, or source tooling:
-
-```bash
-cxr update
-cxr update --yes
-```
-
-Standalone executables are updated by downloading the matching asset from GitHub Releases and replacing the old executable. The standalone build does not silently overwrite itself.
-
-## Uninstall
-
-Interactively choose whether profiles, backups, and state are preserved:
-
-```bash
-cxr uninstall
-```
-
-Skip confirmation and preserve data:
-
-```bash
-cxr uninstall --yes
-```
-
-Remove all CodexRelay-managed data:
-
-```bash
-cxr uninstall --purge
-cxr uninstall --purge --yes
-```
-
-Standalone builds also remove their executable; on Windows this happens after the running process exits. No uninstall mode removes the active `~/.codex/auth.json` or `~/.codex/config.toml`.
+5. If all candidates are unhealthy, active files remain unchanged.
 
 ## Storage
 
 ```text
 ~/.config/codex-relay/
 ├── profiles/
-│   └── <name>/
-│       ├── profile.json
-│       ├── auth.json
-│       └── config.toml
 ├── backups/
 ├── state.json
 └── switch.lock
 ```
 
-Override paths with `CODEX_RELAY_HOME`, `CODEX_HOME`, `--home`, and `--codex-home`.
+Active Codex files remain at `~/.codex/auth.json` and `~/.codex/config.toml`; uninstall does not remove them.
 
-## Automated releases
+## Release and signing
 
-Push a tag matching the project version:
+Push a tag that matches `pyproject.toml`:
 
 ```bash
 git tag -a v0.6.0 -m "CodexRelay v0.6.0"
 git push origin v0.6.0
 ```
 
-The release workflow:
+The Release workflow builds native Windows Setup executables, macOS DMG/PKG installers, and Linux TAR/DEB/RPM packages, smoke-tests them, generates `SHA256SUMS.txt`, and uploads the assets to GitHub Releases.
 
-1. Verifies that the tag matches `pyproject.toml`.
-2. Runs the complete test suite.
-3. Builds standalone executables on native OS and CPU runners.
-4. Smoke-tests every executable with `--help`.
-5. Packages seven platform assets and generates `SHA256SUMS.txt`.
-6. Creates or updates the GitHub Release.
+Signing requires your own Windows code-signing certificate and Apple Developer ID private keys. The workflow supports automated signing and macOS notarization; see [Signing and notarization](docs/SIGNING.en.md).
 
 ## Security
 
 - Profiles and backups contain credentials and must be protected.
-- Credential files use mode `0600` where supported.
-- API keys and access tokens are not printed in status tables or JSON output.
+- API keys and access tokens are not printed in status output.
+- Prefer `--api-key-stdin` to avoid shell history.
 - Responses API health checks may consume a small number of tokens.
-- The ChatGPT usage endpoint is not a guaranteed public API and may change upstream.
+- ChatGPT usage checks rely on an unstable implementation endpoint.
 
 ## Development
 
 ```bash
 uv sync --extra dev
 uv run pytest
+uv run cxr --help
 uv build --no-sources
 ```
