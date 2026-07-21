@@ -32,6 +32,12 @@ def installation_text(target: str) -> str:
     return """CodexRelay portable package\n\n1. Make the executable runnable: chmod +x cxr\n2. Move it to a directory on PATH, for example: mkdir -p ~/.local/bin && mv cxr ~/.local/bin/cxr\n3. Open a new terminal and run: cxr status\n"""
 
 
+def _tar_filter(member: tarfile.TarInfo) -> tarfile.TarInfo:
+    if member.isfile() and member.name.endswith("/cxr"):
+        member.mode |= 0o111
+    return member
+
+
 def build_archive(*, binary: Path, target: str, version: str, output_dir: Path) -> Path:
     if target not in SUPPORTED_TARGETS:
         supported = ", ".join(sorted(SUPPORTED_TARGETS))
@@ -67,7 +73,7 @@ def build_archive(*, binary: Path, target: str, version: str, output_dir: Path) 
         else:
             archive = output_dir / f"{package_name}.tar.gz"
             with tarfile.open(archive, "w:gz") as handle:
-                handle.add(stage, arcname=package_name)
+                handle.add(stage, arcname=package_name, filter=_tar_filter)
 
     return archive
 
