@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -57,35 +57,33 @@ jobs:
           uv run cxr --help
           uv run codex-relay --help
 
-  build:
-    name: Build and smoke test distributions
+  standalone-smoke:
+    name: Build standalone Linux binary
     needs: test
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
-      - name: Install uv
+      - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: pyproject.toml
 
-      - name: Build wheel and source distribution
-        run: uv build --no-sources
+      - name: Install project
+        run: uv sync --extra dev
 
-      - name: Smoke test wheel
-        shell: bash
-        run: |
-          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$wheel"
-          uv run --isolated --no-project --with "$wheel" cxr --help
+      - name: Build standalone executable
+        run: uv run --with pyinstaller==6.21.0 pyinstaller --clean --noconfirm --onefile --name cxr scripts/cxr_launcher.py
 
-      - name: Smoke test source distribution
-        shell: bash
-        run: |
-          sdist="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
-          test -n "$sdist"
-          uv run --isolated --no-project --with "$sdist" cxr --help
+      - name: Smoke test executable
+        run: ./dist/cxr --help
+
+      - name: Package executable
+        run: python scripts/package_release.py --binary dist/cxr --target linux-x86_64 --version 0.0.0-ci
+
+      - name: Inspect archive
+        run: tar -tzf release-assets/codex-relay-0.0.0-ci-linux-x86_64.tar.gz
