@@ -1,4 +1,5 @@
-# Triggered after the migration workflow exists on the default branch.
+# Triggered through a merged pull request so GitHub emits a native push event.
+# The workflow removes itself and the temporary payload in the final commit.
 name: Apply CoderRelay Rebrand
 
 on:
