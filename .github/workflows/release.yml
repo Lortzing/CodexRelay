@@ -29,6 +29,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
+      source_ref: ${{ steps.version.outputs.source_ref }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,9 +48,18 @@ jobs:
           PY
           )"
           [[ "$tag" == v* ]] || { echo "Release tag must start with v: $tag" >&2; exit 1; }
-          [[ "$version" == "$project_version" ]] || { echo "Tag $tag does not match project version $project_version" >&2; exit 1; }
+          [[ "$version" == "$project_version" ]] || {
+            echo "Tag $tag does not match project version $project_version" >&2
+            exit 1
+          }
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            source_ref="${{ github.sha }}"
+          else
+            source_ref="$tag"
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.13"
@@ -106,7 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -138,12 +148,48 @@ jobs:
         run: |
           $setup = Get-ChildItem release-assets -Filter "CoderRelay-Setup-*.exe" | Select-Object -First 1
           if (-not $setup) { throw "Setup executable was not produced." }
-          $installDir = Join-Path $env:RUNNER_TEMP "CoderRelay-Smoke"
-          & $setup.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Installer smoke test failed." }
-          & (Join-Path $installDir "cdy.exe") --help
+
+          $installDir = Join-Path $env:RUNNER_TEMP "CoderRelay-Smoke-${{ matrix.architecture }}"
+          $installLog = Join-Path $env:RUNNER_TEMP "CoderRelay-install-${{ matrix.architecture }}.log"
+          $uninstallLog = Join-Path $env:RUNNER_TEMP "CoderRelay-uninstall-${{ matrix.architecture }}.log"
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $installLog, $uninstallLog -Force -ErrorAction SilentlyContinue
+
+          $installArgs = @(
+            "/VERYSILENT"
+            "/SUPPRESSMSGBOXES"
+            "/NORESTART"
+            "/SP-"
+            "/DIR=`"$installDir`""
+            "/LOG=`"$installLog`""
+          )
+          $install = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            if (Test-Path $installLog) { Get-Content $installLog | Write-Host }
+            throw "Installer smoke test failed with exit code $($install.ExitCode)."
+          }
+
+          $installedBinary = Join-Path $installDir "cdy.exe"
+          if (-not (Test-Path $installedBinary)) {
+            if (Test-Path $installLog) { Get-Content $installLog | Write-Host }
+            throw "Installer exited successfully but cdy.exe was not installed."
+          }
+          & $installedBinary --help
+          if ($LASTEXITCODE -ne 0) { throw "Installed cdy.exe failed its --help smoke test." }
+
           $uninstaller = Get-ChildItem $installDir -Filter "unins*.exe" | Select-Object -First 1
-          if ($uninstaller) { & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART }
+          if (-not $uninstaller) { throw "The installed Inno Setup uninstaller was not found." }
+          $uninstallArgs = @(
+            "/VERYSILENT"
+            "/SUPPRESSMSGBOXES"
+            "/NORESTART"
+            "/LOG=`"$uninstallLog`""
+          )
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList $uninstallArgs -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            if (Test-Path $uninstallLog) { Get-Content $uninstallLog | Write-Host }
+            throw "Uninstaller smoke test failed with exit code $($uninstall.ExitCode)."
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.architecture }}
@@ -182,7 +228,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -235,7 +281,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
