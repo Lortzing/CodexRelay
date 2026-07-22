@@ -47,8 +47,10 @@ uv build --no-sources
 
 - Release tags use semantic versions prefixed with `v` and must match `pyproject.toml`.
 - Native builds run on target runners.
+- The Release workflow creates or reuses the GitHub Release before platform builds start.
+- Each successful platform job uploads its assets directly, so one failed architecture does not block all other downloads.
 - Windows publishes Setup EXE and ZIP for x86, x86_64, and ARM64.
 - macOS publishes DMG images containing PKG installers for Intel and Apple Silicon.
 - Linux publishes TAR.GZ, DEB, and RPM for x86_64 and AArch64.
-- Release assets include `SHA256SUMS.txt`.
+- `SHA256SUMS.txt` covers the assets produced by the current workflow run and reports missing targets in the job summary.
 - Release artifacts are unsigned.
