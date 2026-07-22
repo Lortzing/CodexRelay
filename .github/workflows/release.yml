@@ -20,6 +20,7 @@ concurrency:
 env:
   PYINSTALLER_VERSION: "6.21.0"
   NFPM_VERSION: "v2.47.0"
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   validate:
