@@ -52,6 +52,7 @@ uv build --no-sources
 - Manual Release dispatch validates the requested tag but builds platform assets from the selected workflow commit, allowing an existing failed release to be repaired from `main`.
 - Windows publishes Setup EXE and ZIP for x86, x86_64, and ARM64.
 - The Windows installer uses Inno Setup's built-in English messages. Additional language files must be vendored before being referenced.
+- Windows installer smoke tests must use `Start-Process -Wait -PassThru`, verify the installed `cdy.exe`, exercise the uninstaller, and print Inno Setup logs on failure.
 - macOS publishes DMG images containing PKG installers for Intel and Apple Silicon.
 - Linux publishes TAR.GZ, DEB, and RPM for x86_64 and AArch64.
 - nFPM `v2.47.0` requires Go `1.26.4` or newer; the workflow uses Go `1.26.x`.
