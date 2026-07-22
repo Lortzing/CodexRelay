@@ -105,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -181,7 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -234,7 +234,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.validate.outputs.tag }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -242,7 +242,7 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          go-version: "1.26.x"
           cache: false
       - name: Install packaging tools
         run: |
