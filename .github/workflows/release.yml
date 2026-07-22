@@ -56,10 +56,33 @@ jobs:
           uv sync --extra dev
           uv run pytest
 
+  prepare-release:
+    name: Prepare GitHub Release
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create release when missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; platform jobs will update its assets."
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --generate-notes \
+              --title "CoderRelay $RELEASE_TAG"
+          fi
+
   windows-installers:
     name: Windows ${{ matrix.architecture }}
-    needs: validate
+    needs: [validate, prepare-release]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -126,11 +149,23 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
+      - name: Upload Windows assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          Get-ChildItem release-assets -File | ForEach-Object {
+            gh release upload $env:RELEASE_TAG $_.FullName --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload $($_.Name)" }
+          }
 
   macos-installers:
     name: macOS ${{ matrix.architecture }}
-    needs: validate
+    needs: [validate, prepare-release]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -172,11 +207,18 @@ jobs:
           path: release-assets/*.dmg
           if-no-files-found: error
           retention-days: 7
+      - name: Upload macOS assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release-assets/*.dmg --clobber
 
   linux-packages:
     name: Linux ${{ matrix.architecture }}
-    needs: validate
+    needs: [validate, prepare-release]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -232,32 +274,68 @@ jobs:
             release-assets/*.rpm
           if-no-files-found: error
           retention-days: 7
+      - name: Upload Linux assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
-  github-release:
-    name: Publish GitHub Release
-    needs: [validate, windows-installers, macos-installers, linux-packages]
+  checksums:
+    name: Publish checksums
+    needs: [validate, prepare-release, windows-installers, macos-installers, linux-packages]
+    if: ${{ always() && needs.validate.result == 'success' && needs.prepare-release.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Download successful build artifacts
+        uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           path: downloaded-assets
-      - name: Collect and verify assets
+      - name: Create checksums and report missing assets
         shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           mkdir -p release-assets
-          mapfile -t files < <(find downloaded-assets -type f -print | sort)
-          [[ "${#files[@]}" -eq 14 ]] || { printf 'Expected 14 release assets, found %s\n' "${#files[@]}" >&2; printf '%s\n' "${files[@]}" >&2; exit 1; }
+          mapfile -t files < <(find downloaded-assets -type f -print 2>/dev/null | sort)
+          [[ "${#files[@]}" -gt 0 ]] || { echo "No platform artifacts were produced." >&2; exit 1; }
           for file in "${files[@]}"; do cp "$file" release-assets/; done
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
-      - name: Create or update GitHub Release
+
+          expected=(
+            "CoderRelay-Setup-${VERSION}-windows-x86.exe"
+            "CoderRelay-Portable-${VERSION}-windows-x86.zip"
+            "CoderRelay-Setup-${VERSION}-windows-x86_64.exe"
+            "CoderRelay-Portable-${VERSION}-windows-x86_64.zip"
+            "CoderRelay-Setup-${VERSION}-windows-arm64.exe"
+            "CoderRelay-Portable-${VERSION}-windows-arm64.zip"
+            "CoderRelay-${VERSION}-macOS-x86_64.dmg"
+            "CoderRelay-${VERSION}-macOS-arm64.dmg"
+            "coder-relay-${VERSION}-linux-x86_64.tar.gz"
+            "coder-relay_${VERSION}_amd64.deb"
+            "coder-relay-${VERSION}-1.x86_64.rpm"
+            "coder-relay-${VERSION}-linux-aarch64.tar.gz"
+            "coder-relay_${VERSION}_arm64.deb"
+            "coder-relay-${VERSION}-1.aarch64.rpm"
+          )
+          missing=()
+          for asset in "${expected[@]}"; do
+            [[ -f "release-assets/$asset" ]] || missing+=("$asset")
+          done
+          {
+            echo "## Release asset summary"
+            echo
+            echo "Produced ${#files[@]} of ${#expected[@]} platform assets."
+            if [[ "${#missing[@]}" -gt 0 ]]; then
+              echo
+              echo "Missing assets:"
+              printf -- '- `%s`\n' "${missing[@]}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload checksum manifest
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-assets/* --clobber
-          else
-            gh release create "$RELEASE_TAG" release-assets/* --verify-tag --generate-notes --title "CoderRelay $RELEASE_TAG"
-          fi
+        run: gh release upload "$RELEASE_TAG" release-assets/SHA256SUMS.txt --clobber
