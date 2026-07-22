@@ -60,7 +60,6 @@ VersionInfoProductVersion={#AppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "cdy.exe"; Flags: ignoreversion
