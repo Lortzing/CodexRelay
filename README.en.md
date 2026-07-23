@@ -45,7 +45,26 @@ coder-relay --help  # full command
 | Intel x86_64 | `CoderRelay-<version>-macOS-x86_64.dmg` |
 | Apple Silicon ARM64 | `CoderRelay-<version>-macOS-arm64.dmg` |
 
-The included PKG installs `cdy` to `/usr/local/bin/cdy`.
+Open the DMG and run the included PKG. The current package uses a persistent PyInstaller directory runtime instead of extracting a one-file executable on every command.
+
+The runtime is installed under:
+
+```text
+/usr/local/lib/coder-relay/
+```
+
+The command remains available at:
+
+```text
+/usr/local/bin/cdy
+```
+
+Install the newly generated PKG again when upgrading from the earlier macOS one-file build. The existing executable does not become faster until it is replaced.
+
+```bash
+time cdy --help
+cdy status --no-probe
+```
 
 ### Linux
 
@@ -72,6 +91,7 @@ uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.7.0
 
 ```bash
 cdy status
+cdy status --no-probe
 cdy add-auth official ~/.codex/auth.json
 cdy add-api backup --url https://gateway.example.com/v1 --model gpt-5.6 --api-key-stdin
 cdy use official
@@ -91,9 +111,24 @@ cdy launch -p official -p backup --
 
 Override it with `CODER_RELAY_HOME`. Active Codex files remain under `~/.codex`; uninstall never deletes them.
 
+## Updating and uninstalling
+
+Package-managed Python installations can use:
+
+```bash
+cdy update
+cdy uninstall
+```
+
+The macOS PKG installs under `/usr/local`, so remove it with administrator privileges:
+
+```bash
+sudo cdy uninstall --yes
+```
+
 ## Release
 
-A matching `v*` tag builds native Windows installers, macOS DMG/PKG installers, Linux TAR/DEB/RPM packages, and `SHA256SUMS.txt`. These artifacts are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper warnings.
+A matching `v*` tag builds native Windows installers, macOS DMG/PKG installers, Linux TAR/DEB/RPM packages, and `SHA256SUMS.txt`. macOS uses a PyInstaller directory runtime to reduce repeated startup latency. These artifacts are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper warnings.
 
 ## Development
 
