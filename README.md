@@ -54,10 +54,25 @@ coder-relay --help
 | Intel x86_64 | `CoderRelay-<版本>-macOS-x86_64.dmg` |
 | Apple Silicon ARM64 | `CoderRelay-<版本>-macOS-arm64.dmg` |
 
-打开 DMG 后运行其中的 `CoderRelay-<版本>.pkg`。命令安装到：
+打开 DMG 后运行其中的 `CoderRelay-<版本>.pkg`。新版 PKG 使用持久化目录式运行时，避免旧版单文件程序每次启动时重新解压。
+
+运行时安装到：
+
+```text
+/usr/local/lib/coder-relay/
+```
+
+命令入口保持为：
 
 ```text
 /usr/local/bin/cdy
+```
+
+从旧版 macOS DMG 升级时，需要重新安装最新 PKG；仅重新打开旧的 `cdy` 不会获得启动提速。安装后可以验证：
+
+```bash
+time cdy --help
+cdy status --no-probe
 ```
 
 ### Linux
@@ -95,6 +110,12 @@ uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.7.0
 
 ```bash
 cdy status
+```
+
+只查看本地状态、不执行网络探测：
+
+```bash
+cdy status --no-probe
 ```
 
 添加登录 Profile：
@@ -160,7 +181,13 @@ cdy uninstall
 cdy uninstall --purge
 ```
 
-Windows Setup 安装版执行 `cdy uninstall` 时会启动标准卸载器。Linux DEB/RPM 建议使用系统包管理器卸载。独立可执行文件需要从 GitHub Release 下载新版本进行替换。
+Windows Setup 安装版执行 `cdy uninstall` 时会启动标准卸载器。macOS PKG 安装在 `/usr/local`，卸载时使用：
+
+```bash
+sudo cdy uninstall --yes
+```
+
+Linux DEB/RPM 建议使用系统包管理器卸载。独立可执行文件需要从 GitHub Release 下载新版本进行替换。
 
 ## 发布
 
@@ -171,7 +198,7 @@ git tag -a v0.7.0 -m "CoderRelay v0.7.0"
 git push origin v0.7.0
 ```
 
-Release Workflow 会构建 Windows Setup EXE/ZIP、macOS DMG/PKG、Linux TAR/DEB/RPM，并生成 `SHA256SUMS.txt`。安装包未进行数字签名，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提示。
+Release Workflow 会构建 Windows Setup EXE/ZIP、macOS DMG/PKG、Linux TAR/DEB/RPM，并生成 `SHA256SUMS.txt`。macOS 使用 PyInstaller 目录式运行时以降低重复启动延迟。安装包未进行数字签名，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提示。
 
 ## 开发
 
