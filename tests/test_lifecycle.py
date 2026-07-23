@@ -48,3 +48,12 @@ def test_find_windows_uninstaller_prefers_inno_setup_file(tmp_path: Path) -> Non
 
 def test_find_windows_uninstaller_returns_none(tmp_path: Path) -> None:
     assert lifecycle._find_windows_uninstaller(tmp_path / "cdy.exe") is None
+
+
+def test_macos_runtime_root_detects_packaged_entrypoint() -> None:
+    executable = Path("/usr/local/lib/coder-relay/cdy")
+    assert lifecycle._macos_runtime_root(executable) == Path("/usr/local/lib/coder-relay")
+
+
+def test_macos_runtime_root_rejects_unrelated_executable(tmp_path: Path) -> None:
+    assert lifecycle._macos_runtime_root(tmp_path / "cdy") is None
