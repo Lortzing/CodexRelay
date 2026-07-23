@@ -15,6 +15,9 @@ from .errors import RelayError
 CURRENT_DISTRIBUTION = "coder-relay"
 DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CoderRelay.git"
 RELEASES_URL = "https://github.com/Lortzing/CoderRelay/releases/latest"
+MACOS_RUNTIME_ROOT = Path("/usr/local/lib/coder-relay")
+MACOS_LAUNCHER = Path("/usr/local/bin/cdy")
+MACOS_PACKAGE_ID = "com.lortzing.coderrelay"
 
 
 def is_frozen_executable() -> bool:
@@ -28,8 +31,59 @@ def _find_windows_uninstaller(executable: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _macos_runtime_root(executable: Path) -> Path | None:
+    """Return the installed macOS onedir runtime for its packaged entry point."""
+    try:
+        resolved = executable.resolve()
+    except OSError:
+        resolved = executable.absolute()
+    expected = (MACOS_RUNTIME_ROOT / "cdy").resolve(strict=False)
+    return MACOS_RUNTIME_ROOT if resolved == expected else None
+
+
+def _remove_macos_runtime_and_exit(executable: Path) -> NoReturn:
+    runtime_root = _macos_runtime_root(executable)
+    if runtime_root is None:
+        raise AssertionError("macOS runtime removal requires the packaged entry point")
+
+    try:
+        if MACOS_LAUNCHER.is_symlink():
+            target = MACOS_LAUNCHER.resolve(strict=False)
+            if target == executable.resolve(strict=False):
+                MACOS_LAUNCHER.unlink()
+        shutil.rmtree(runtime_root)
+
+        pkgutil = shutil.which("pkgutil")
+        if pkgutil:
+            _run([pkgutil, "--forget", MACOS_PACKAGE_ID])
+
+        os.write(
+            1,
+            (
+                f"Removed the CoderRelay macOS runtime: {runtime_root}\n"
+                f"Removed command entry point: {MACOS_LAUNCHER}\n"
+            ).encode(),
+        )
+        os._exit(0)
+    except PermissionError:
+        os.write(
+            2,
+            (
+                "Error: the macOS package is installed under /usr/local and requires "
+                "administrator privileges. Run: sudo cdy uninstall --yes\n"
+            ).encode(),
+        )
+        os._exit(1)
+    except OSError as exc:
+        os.write(2, f"Error: could not remove the macOS runtime: {exc}\n".encode())
+        os._exit(1)
+
+
 def _remove_frozen_executable_and_exit() -> NoReturn:
     executable = Path(sys.executable).resolve()
+    if sys.platform == "darwin" and _macos_runtime_root(executable) is not None:
+        _remove_macos_runtime_and_exit(executable)
+
     if os.name != "nt":
         try:
             executable.unlink()
