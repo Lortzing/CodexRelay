@@ -54,6 +54,8 @@ uv build --no-sources
 - The Windows installer uses Inno Setup's built-in English messages. Additional language files must be vendored before being referenced.
 - Windows installer smoke tests must use `Start-Process -Wait -PassThru`, verify the installed `cdy.exe`, exercise the uninstaller, and print Inno Setup logs on failure.
 - macOS publishes DMG images containing PKG installers for Intel and Apple Silicon.
+- macOS must use a PyInstaller `--onedir` runtime installed at `/usr/local/lib/coder-relay`, with `/usr/local/bin/cdy` as a symlink. Do not switch macOS back to `--onefile` because repeated extraction causes slow command startup.
+- macOS packaged uninstall must remove the runtime directory, command symlink, and package receipt while preserving profile data unless `--purge` is requested.
 - Linux publishes TAR.GZ, DEB, and RPM for x86_64 and AArch64.
 - nFPM `v2.47.0` requires Go `1.26.4` or newer; the workflow uses Go `1.26.x`.
 - `SHA256SUMS.txt` covers the assets produced by the current workflow run and reports missing targets in the job summary.
