@@ -239,15 +239,16 @@ jobs:
         env:
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
         run: python -c "import os, platform; assert platform.machine().lower() == os.environ['EXPECTED_MACHINE'].lower()"
-      - name: Build native executable
+      - name: Build persistent native runtime
         shell: bash
         run: |
           uv venv --python "$(python -c 'import sys; print(sys.executable)')" .release-venv
           uv pip install --python .release-venv "pyinstaller==${PYINSTALLER_VERSION}" .
-          .release-venv/bin/python -m PyInstaller --clean --noconfirm --onefile --console --noupx --name cdy --target-arch "${{ matrix.architecture }}" scripts/cdy_launcher.py
-          ./dist/cdy --help
+          .release-venv/bin/python -m PyInstaller --clean --noconfirm --onedir --console --noupx --name cdy --target-arch "${{ matrix.architecture }}" scripts/cdy_launcher.py
+          test -x ./dist/cdy/cdy
+          ./dist/cdy/cdy --help
       - name: Build PKG and DMG
-        run: ./scripts/build_macos_dmg.sh --binary ./dist/cdy --architecture "${{ matrix.architecture }}" --version "${{ needs.validate.outputs.version }}" --output-dir release-assets
+        run: ./scripts/build_macos_dmg.sh --bundle ./dist/cdy --architecture "${{ matrix.architecture }}" --version "${{ needs.validate.outputs.version }}" --output-dir release-assets
       - uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.architecture }}
