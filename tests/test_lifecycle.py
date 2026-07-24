@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 from pathlib import Path
+
+import pytest
 
 from coder_relay import lifecycle
 from coder_relay.lifecycle import cleanup_relay
+from coder_relay.updater import ReleaseInfo
+
+
+class ExitCalled(Exception):
+    def __init__(self, code: int):
+        self.code = code
 
 
 def test_cleanup_preserves_data_by_default(tmp_path: Path, monkeypatch) -> None:
@@ -32,9 +42,41 @@ def test_update_prefers_uv_tool(monkeypatch) -> None:
         return lifecycle.subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(lifecycle, "_run", fake_run)
-    manager = lifecycle._update_distribution("git+https://example.invalid/repo.git")
+    manager = lifecycle._update_distribution("git+https://example.invalid/repo.git@v1.2.3")
     assert manager == "uv tool"
-    assert commands == [["/usr/bin/uv", "tool", "install", "--force", "git+https://example.invalid/repo.git"]]
+    assert commands == [["/usr/bin/uv", "tool", "install", "--force", "git+https://example.invalid/repo.git@v1.2.3"]]
+
+
+def test_package_update_tracks_latest_stable_tag(monkeypatch) -> None:
+    release = ReleaseInfo(tag="v0.9.0", version="0.9.0", assets={})
+    sources: list[str] = []
+    monkeypatch.setattr(lifecycle, "fetch_latest_release", lambda: release)
+    monkeypatch.setattr(lifecycle, "is_frozen_executable", lambda: False)
+    monkeypatch.setattr(lifecycle, "_update_distribution", lambda source: sources.append(source) or "uv tool")
+    monkeypatch.setattr(lifecycle.os, "_exit", lambda code: (_ for _ in ()).throw(ExitCalled(code)))
+
+    with pytest.raises(ExitCalled) as caught:
+        lifecycle.update_and_exit()
+    assert caught.value.code == 0
+    assert sources == ["git+https://github.com/Lortzing/CoderRelay.git@v0.9.0"]
+
+
+def test_frozen_update_uses_release_installer(monkeypatch) -> None:
+    release = ReleaseInfo(tag="v0.9.0", version="0.9.0", assets={})
+    calls: list[tuple[ReleaseInfo, bool]] = []
+    monkeypatch.setattr(lifecycle, "fetch_latest_release", lambda: release)
+    monkeypatch.setattr(lifecycle, "is_frozen_executable", lambda: True)
+    monkeypatch.setattr(
+        lifecycle,
+        "install_frozen_update",
+        lambda selected, force=False: calls.append((selected, force)) or "scheduled",
+    )
+    monkeypatch.setattr(lifecycle.os, "_exit", lambda code: (_ for _ in ()).throw(ExitCalled(code)))
+
+    with pytest.raises(ExitCalled) as caught:
+        lifecycle.update_and_exit(force=True)
+    assert caught.value.code == 0
+    assert calls == [(release, True)]
 
 
 def test_find_windows_uninstaller_prefers_inno_setup_file(tmp_path: Path) -> None:
