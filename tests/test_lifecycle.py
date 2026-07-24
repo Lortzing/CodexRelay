@@ -33,7 +33,8 @@ def test_cleanup_purge_removes_data(tmp_path: Path, monkeypatch) -> None:
     assert result.data_removed
 
 
-def test_update_prefers_uv_tool(monkeypatch) -> None:
+def test_update_uses_owning_uv_tool_environment(monkeypatch) -> None:
+    monkeypatch.setattr(lifecycle.sys, "prefix", "/home/user/.local/share/uv/tools/coder-relay")
     monkeypatch.setattr(lifecycle.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
     commands: list[list[str]] = []
 
@@ -45,6 +46,20 @@ def test_update_prefers_uv_tool(monkeypatch) -> None:
     manager = lifecycle._update_distribution("git+https://example.invalid/repo.git@v1.2.3")
     assert manager == "uv tool"
     assert commands == [["/usr/bin/uv", "tool", "install", "--force", "git+https://example.invalid/repo.git@v1.2.3"]]
+
+
+def test_update_uses_owning_pipx_environment(monkeypatch) -> None:
+    monkeypatch.setattr(lifecycle.sys, "prefix", "/home/user/.local/share/pipx/venvs/coder-relay")
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda name: "/usr/bin/pipx" if name == "pipx" else None)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        lifecycle,
+        "_run",
+        lambda command: commands.append(command) or lifecycle.subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    manager = lifecycle._update_distribution("git+https://example.invalid/repo.git@v1.2.3")
+    assert manager == "pipx"
+    assert commands == [["/usr/bin/pipx", "install", "--force", "git+https://example.invalid/repo.git@v1.2.3"]]
 
 
 def test_package_update_tracks_latest_stable_tag(monkeypatch) -> None:
