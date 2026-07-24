@@ -25,14 +25,21 @@ app.registered_commands[:] = [
 @app.command("update")
 def update(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation.")] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Reinstall the latest stable release even if versions match."),
+    ] = False,
 ) -> None:
-    """Update CoderRelay from the GitHub main branch without changing profile data."""
-    if not yes and not typer.confirm("Update CoderRelay from GitHub main?", default=True):
+    """Download, verify, and install the latest stable GitHub Release."""
+    if not yes and not typer.confirm(
+        "Download and install the latest stable CoderRelay release?",
+        default=True,
+    ):
         console.print("Update cancelled.")
         raise typer.Exit(0)
-    console.print("Updating the installed package; profile data will be preserved...")
+    console.print("Checking the latest release and verifying its assets...")
     console.file.flush()
-    update_and_exit()
+    update_and_exit(force=force)
 
 
 @app.command("uninstall")
