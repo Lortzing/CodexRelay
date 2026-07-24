@@ -183,28 +183,35 @@ def _uninstall_distribution(package: str) -> str:
     )
 
 
+def _python_install_manager() -> str:
+    """Infer the manager that owns the running Python environment."""
+    prefix = Path(sys.prefix).resolve().as_posix().lower().rstrip("/")
+    if "/uv/tools/coder-relay" in prefix:
+        return "uv tool"
+    if "/pipx/venvs/coder-relay" in prefix:
+        return "pipx"
+    return "pip"
+
+
 def _update_distribution(source: str) -> str:
-    uv = shutil.which("uv")
-    if uv:
+    manager = _python_install_manager()
+    if manager == "uv tool":
+        uv = shutil.which("uv")
+        if not uv:
+            raise RelayError("This installation is managed by uv, but uv was not found in PATH.")
         result = _run([uv, "tool", "install", "--force", source])
-        if result.returncode == 0:
-            return "uv tool"
-        uv_error = (result.stderr or result.stdout).strip()
-    else:
-        uv_error = ""
-
-    pipx = shutil.which("pipx")
-    if pipx:
+    elif manager == "pipx":
+        pipx = shutil.which("pipx")
+        if not pipx:
+            raise RelayError("This installation is managed by pipx, but pipx was not found in PATH.")
         result = _run([pipx, "install", "--force", source])
-        if result.returncode == 0:
-            return "pipx"
+    else:
+        result = _run([sys.executable, "-m", "pip", "install", "--upgrade", source])
 
-    result = _run([sys.executable, "-m", "pip", "install", "--upgrade", source])
     if result.returncode == 0:
-        return "pip"
-
-    detail = (result.stderr or result.stdout).strip() or uv_error
-    raise RelayError(detail or "Could not update CoderRelay with uv, pipx, or pip.")
+        return manager
+    detail = (result.stderr or result.stdout).strip()
+    raise RelayError(detail or f"Could not update CoderRelay using {manager}.")
 
 
 def cleanup_relay(*, app_home: Path, purge: bool, user_home: Path | None = None) -> CleanupResult:
