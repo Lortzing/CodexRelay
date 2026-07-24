@@ -17,6 +17,7 @@ CoderRelay 是面向编码智能体 CLI 的账户、Profile 与 API 路由管理
 - 手动切换、健康检查、自动故障转移和高优先级恢复切回。
 - 展示 ChatGPT 套餐、限额窗口、Credits、API 余额和延迟。
 - 通过文件锁、原子写入和备份安全替换活动配置。
+- 从最新稳定 GitHub Release 自动下载、校验并安装平台更新。
 - 支持 Bash、Zsh 和 Fish 自动补全。
 
 > Claude Code 支持属于后续功能，当前版本不会修改 Claude Code 的配置。
@@ -101,7 +102,7 @@ cd CoderRelay
 也可以直接安装固定 Tag：
 
 ```bash
-uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.7.0
+uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.0
 ```
 
 ## 快速开始
@@ -171,31 +172,59 @@ cdy uninstall
 ~/.codex/config.toml
 ```
 
-卸载 CoderRelay 不会删除这两个活动文件。
+更新和卸载 CoderRelay 都不会删除这两个活动文件。
 
-## 更新与卸载
+## 自动更新与卸载
+
+从 v0.8.0 开始，所有安装方式均可使用：
 
 ```bash
 cdy update
+cdy update -y       # 跳过确认
+cdy update --force  # 即使版本相同也重新安装最新稳定版
+```
+
+更新流程：
+
+1. 查询最新的稳定 GitHub Release，而不是直接追踪 `main`。
+2. 根据操作系统、CPU 架构和当前安装方式选择精确资产。
+3. 下载目标资产和 `SHA256SUMS.txt`。
+4. 校验文件大小、SHA-256 清单，以及 GitHub 提供的资产摘要（如果存在）。
+5. 使用对应平台的安装方式完成替换。
+
+平台行为：
+
+- Windows Setup：当前进程退出后静默运行新 Setup 安装程序。
+- Windows 便携版：当前进程退出后原地替换 `cdy.exe`。
+- macOS PKG：自动挂载 DMG，并通过系统 `installer` 安装；可能要求输入管理员密码。
+- Linux DEB/RPM：调用系统包管理器升级。
+- Linux TAR.GZ：校验后原地替换当前可执行文件。
+- `uv`、`pipx`、`pip`：安装最新稳定 Release 对应的固定 Tag，不再直接安装 `main`。
+
+`v0.7.0` 及更早版本本身没有自动下载能力，因此需要手动安装 `v0.8.0` 一次。此后的稳定版本可以直接通过 `cdy update` 升级。
+
+卸载：
+
+```bash
 cdy uninstall
 cdy uninstall --purge
 ```
 
-Windows Setup 安装版执行 `cdy uninstall` 时会启动标准卸载器。macOS PKG 安装在 `/usr/local`，卸载时使用：
+Windows Setup 安装版会启动标准卸载器。macOS PKG 安装在 `/usr/local`，卸载时使用：
 
 ```bash
 sudo cdy uninstall --yes
 ```
 
-Linux DEB/RPM 建议使用系统包管理器卸载。独立可执行文件需要从 GitHub Release 下载新版本进行替换。
+Linux DEB/RPM 也可以继续使用系统包管理器卸载。
 
 ## 发布
 
 推送与 `pyproject.toml` 版本一致的 Tag：
 
 ```bash
-git tag -a v0.7.0 -m "CoderRelay v0.7.0"
-git push origin v0.7.0
+git tag -a v0.8.0 -m "CoderRelay v0.8.0"
+git push origin v0.8.0
 ```
 
 Release Workflow 会构建 Windows Setup EXE/ZIP、macOS DMG/PKG、Linux TAR/DEB/RPM，并生成 `SHA256SUMS.txt`。macOS 使用 PyInstaller 目录式运行时以降低重复启动延迟。安装包未进行数字签名，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提示。
