@@ -9,12 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
+from . import __version__
 from .completion import uninstall_completion
 from .errors import RelayError
+from .updater import (
+    fetch_latest_release,
+    install_frozen_update,
+    latest_tagged_source,
+    version_key,
+)
 
 CURRENT_DISTRIBUTION = "coder-relay"
-DEFAULT_UPDATE_SOURCE = "git+https://github.com/Lortzing/CoderRelay.git"
-RELEASES_URL = "https://github.com/Lortzing/CoderRelay/releases/latest"
 MACOS_RUNTIME_ROOT = Path("/usr/local/lib/coder-relay")
 MACOS_LAUNCHER = Path("/usr/local/bin/cdy")
 MACOS_PACKAGE_ID = "com.lortzing.coderrelay"
@@ -225,20 +230,21 @@ def uninstall_and_exit() -> NoReturn:
         os._exit(1)
 
 
-def update_and_exit(*, source: str = DEFAULT_UPDATE_SOURCE) -> NoReturn:
-    """Replace a package-managed installation and terminate."""
-    if is_frozen_executable():
-        os.write(
-            2,
-            (
-                "Standalone executables are updated from GitHub Releases. "
-                f"Download the matching asset from {RELEASES_URL}.\n"
-            ).encode(),
-        )
-        os._exit(2)
+def update_and_exit(*, force: bool = False) -> NoReturn:
+    """Update this installation from the latest stable GitHub Release and terminate."""
     try:
-        manager = _update_distribution(source)
-        os.write(1, f"Updated {CURRENT_DISTRIBUTION} using {manager}.\n".encode())
+        release = fetch_latest_release()
+        if version_key(release.version) <= version_key(__version__) and not force:
+            os.write(1, f"CoderRelay {__version__} is already up to date.\n".encode())
+            os._exit(0)
+
+        if is_frozen_executable():
+            message = install_frozen_update(release, force=force)
+        else:
+            source = latest_tagged_source(release)
+            manager = _update_distribution(source)
+            message = f"Updated CoderRelay to {release.tag} using {manager}."
+        os.write(1, f"{message}\n".encode())
         os._exit(0)
     except RelayError as exc:
         os.write(2, f"Error: {exc}\n".encode())
