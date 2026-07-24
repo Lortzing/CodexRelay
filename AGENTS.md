@@ -20,7 +20,8 @@
 - `src/coder_relay/cli.py`: Typer/Rich command definitions.
 - `src/coder_relay/entrypoint.py`: public command surface and lifecycle commands.
 - `src/coder_relay/completion.py`: Bash/Zsh/Fish completion for `cdy` and `coder-relay`.
-- `src/coder_relay/lifecycle.py`: updates, installer-aware uninstall, and cleanup.
+- `src/coder_relay/lifecycle.py`: update/uninstall dispatch and package-manager lifecycle behavior.
+- `src/coder_relay/updater.py`: latest stable Release discovery, platform/architecture asset selection, downloads, SHA-256 verification, and native update application.
 - `src/coder_relay/manager.py`: profile import, switching, failover, and diagnostics.
 - `src/coder_relay/health.py`: ChatGPT and OpenAI-compatible API probes.
 - `src/coder_relay/usage.py`: auth parsing and ChatGPT usage queries.
@@ -42,6 +43,18 @@ uv run cdy --help
 uv run coder-relay --help
 uv build --no-sources
 ```
+
+## Update policy
+
+- `cdy update` targets the latest published stable GitHub Release, never an untagged `main` snapshot.
+- Python package installations update from the exact latest stable Git Tag.
+- Frozen/native installations select an exact asset by operating system, architecture, and installation type.
+- Every native update requires the matching `SHA256SUMS.txt` entry. When GitHub exposes a SHA-256 asset digest, verify that as well.
+- A missing asset, checksum, unsupported architecture, size mismatch, or digest mismatch must fail closed without replacing the current installation.
+- Windows Setup and Portable updates are applied by a detached helper after the running process exits.
+- macOS updates mount the DMG and install its PKG with the system installer.
+- Linux DEB/RPM updates use the installed package manager; TAR installations replace the executable atomically or with elevation.
+- Updates and uninstall preserve managed data and active Codex files unless `--purge` is explicitly requested.
 
 ## Release policy
 
