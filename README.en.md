@@ -17,6 +17,7 @@ Current capabilities:
 - Manual switching, health checks, failover, and preferred-profile recovery.
 - ChatGPT plan, rate-limit windows, credits, provider balance, and latency display.
 - Safe activation using backups, process locks, and atomic writes.
+- Verified automatic updates from the latest stable GitHub Release.
 - Bash, Zsh, and Fish completion.
 
 > Claude Code support is planned. This release does not modify Claude Code configuration.
@@ -59,7 +60,7 @@ The command remains available at:
 /usr/local/bin/cdy
 ```
 
-Install the newly generated PKG again when upgrading from the earlier macOS one-file build. The existing executable does not become faster until it is replaced.
+Install the new PKG again when upgrading from the earlier macOS one-file build. The existing executable does not become faster until it is replaced.
 
 ```bash
 time cdy --help
@@ -84,7 +85,7 @@ cd CoderRelay
 Or install a fixed tag:
 
 ```bash
-uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.7.0
+uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.0
 ```
 
 ## Quick start
@@ -109,15 +110,40 @@ cdy launch -p official -p backup --
 └── switch.lock
 ```
 
-Override it with `CODER_RELAY_HOME`. Active Codex files remain under `~/.codex`; uninstall never deletes them.
+Override it with `CODER_RELAY_HOME`. Active Codex files remain under `~/.codex`; updates and uninstall never delete them.
 
-## Updating and uninstalling
+## Automatic updates and uninstall
 
-Package-managed Python installations can use:
+Starting with v0.8.0, every installation type supports:
 
 ```bash
 cdy update
+cdy update -y
+cdy update --force
+```
+
+The updater:
+
+1. Queries the latest stable GitHub Release instead of tracking `main`.
+2. Selects the exact asset for the operating system, CPU architecture, and installation type.
+3. Downloads the asset and `SHA256SUMS.txt`.
+4. Verifies size, the SHA-256 manifest, and the GitHub asset digest when available.
+5. Installs or replaces the application using the native platform mechanism.
+
+Platform behavior:
+
+- Windows Setup runs the verified installer after the current process exits.
+- Windows Portable replaces `cdy.exe` after the current process exits.
+- macOS mounts the DMG and runs the system PKG installer; an administrator password may be requested.
+- Linux DEB/RPM uses the system package manager.
+- Linux TAR.GZ replaces the current executable in place.
+- `uv`, `pipx`, and `pip` install the fixed tag for the latest stable release rather than `main`.
+
+v0.7.0 and earlier do not contain the downloader, so they require one manual installation of v0.8.0. Later stable releases can then be installed with `cdy update`.
+
+```bash
 cdy uninstall
+cdy uninstall --purge
 ```
 
 The macOS PKG installs under `/usr/local`, so remove it with administrator privileges:
@@ -128,7 +154,14 @@ sudo cdy uninstall --yes
 
 ## Release
 
-A matching `v*` tag builds native Windows installers, macOS DMG/PKG installers, Linux TAR/DEB/RPM packages, and `SHA256SUMS.txt`. macOS uses a PyInstaller directory runtime to reduce repeated startup latency. These artifacts are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper warnings.
+Create a tag matching `pyproject.toml`:
+
+```bash
+git tag -a v0.8.0 -m "CoderRelay v0.8.0"
+git push origin v0.8.0
+```
+
+The Release workflow builds native Windows installers, macOS DMG/PKG installers, Linux TAR/DEB/RPM packages, and `SHA256SUMS.txt`. macOS uses a PyInstaller directory runtime to reduce repeated startup latency. These artifacts are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper warnings.
 
 ## Development
 
